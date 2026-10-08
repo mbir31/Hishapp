@@ -1,23 +1,100 @@
 import React from 'react';
-import { Cloud, CloudOff, RefreshCw, Settings, Wifi, WifiOff } from 'lucide-react';
+import { Cloud, CloudOff, RefreshCw, Settings, ShieldAlert, Wifi, WifiOff } from 'lucide-react';
 import { ClinicSettings } from '../types';
-import { SyncStatus } from '../services/googleSheets';
+import type { BackupStatus } from '../services/backupEngine';
 
 interface HeaderProps {
   settings: ClinicSettings;
-  syncStatus: SyncStatus;
   isOnline: boolean;
+  backup: BackupStatus;
   onOpenSettings: () => void;
-  onTriggerSync: () => void;
+}
+
+function BackupPill({ backup, isOnline }: { backup: BackupStatus; isOnline: boolean }) {
+  const { phase, isConfigured } = backup;
+
+  if (!isConfigured) {
+    return (
+      <div
+        className="hidden sm:flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-medium bg-slate-100 text-slate-500 border border-slate-200"
+        title="Cloud backup not configured — add your Firebase web config in src/config/firebase.ts"
+      >
+        <CloudOff className="w-3.5 h-3.5" />
+        <span>Local Only</span>
+      </div>
+    );
+  }
+
+  if (phase === 'syncing') {
+    return (
+      <div
+        className="flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-medium bg-indigo-50 text-indigo-700 border border-indigo-200"
+        title="Backing up to your Google Drive..."
+      >
+        <RefreshCw className="w-3.5 h-3.5 animate-spin" />
+        <span className="hidden sm:inline">Backing Up...</span>
+      </div>
+    );
+  }
+
+  if (phase === 'error') {
+    return (
+      <div
+        className="flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-medium bg-amber-50 text-amber-700 border border-amber-200"
+        title={backup.error || 'Cloud backup issue — open Settings'}
+      >
+        <ShieldAlert className="w-3.5 h-3.5" />
+        <span className="hidden sm:inline">Backup Issue</span>
+      </div>
+    );
+  }
+
+  if (phase === 'signed-out') {
+    return (
+      <button
+        onClick={() => {}}
+        className="flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-medium bg-slate-100 text-slate-600 border border-slate-200 hover:bg-slate-200/70 active:scale-95 transition-all"
+        title="Sign in from Settings to enable Google Drive cloud backup"
+      >
+        <CloudOff className="w-3.5 h-3.5 text-slate-400" />
+        <span className="hidden sm:inline">Backup Off</span>
+      </button>
+    );
+  }
+
+  // Signed in (idle / synced)
+  return (
+    <div
+      className={`flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-medium border transition-colors ${
+        backup.pendingChanges
+          ? 'bg-sky-500/10 text-sky-700 border-sky-400/30'
+          : 'bg-emerald-500/10 text-emerald-700 border-emerald-500/20'
+      }`}
+      title={
+        backup.pendingChanges
+          ? 'Changes queued — backing up to your Google Drive shortly'
+          : backup.lastBackupAt
+          ? `Backed up to your Google Drive on ${new Date(backup.lastBackupAt).toLocaleString()}`
+          : 'Signed in — your data is protected'
+      }
+    >
+      <Cloud className={`w-3.5 h-3.5 ${backup.pendingChanges ? 'text-sky-600' : 'text-emerald-600'}`} />
+      <span className="hidden sm:inline">
+        {backup.pendingChanges ? 'Backup Queued' : backup.lastBackupAt ? 'Drive Backed Up' : 'Backup Ready'}
+      </span>
+    </div>
+  );
 }
 
 export const Header: React.FC<HeaderProps> = ({
   settings,
-  syncStatus,
   isOnline,
+  backup,
   onOpenSettings,
-  onTriggerSync,
 }) => {
+  const avatar = backup.user?.photoURL || settings.doctorPhoto;
+  const avatarAlt = backup.user?.name || settings.doctorName;
+
   return (
     <header className="sticky top-0 z-40 w-full ios-glass-header px-4 py-3 sm:px-6">
       <div className="max-w-4xl mx-auto flex items-center justify-between gap-3">
@@ -59,13 +136,16 @@ export const Header: React.FC<HeaderProps> = ({
               {settings.clinicName || 'Dental Care Clinic'}
             </p>
             <h1 className="text-base sm:text-lg font-bold text-slate-900 tracking-tight leading-tight truncate">
-              {settings.doctorName || 'Dr. Dental Surgeon'}
+              {backup.user?.name || settings.doctorName || 'Dr. Dental Surgeon'}
             </h1>
           </div>
         </div>
 
-        {/* Right: Live Connection Pill, Drive Sync, Settings Button */}
+        {/* Right: Backup Pill, Connection Pill, Account/Settings Button */}
         <div className="flex items-center gap-2 shrink-0">
+          {/* Google Drive Cloud Backup Status */}
+          <BackupPill backup={backup} isOnline={isOnline} />
+
           {/* Live Online/Offline Status Pill */}
           <div
             className={`hidden sm:flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-medium border backdrop-blur-md transition-colors ${
@@ -75,60 +155,28 @@ export const Header: React.FC<HeaderProps> = ({
             }`}
             title={isOnline ? 'Network Online' : 'Offline Mode (Local-first IndexedDB Active)'}
           >
-            <span
-              className={`w-2 h-2 rounded-full ${
-                isOnline ? 'bg-emerald-500 animate-pulse' : 'bg-rose-500'
-              }`}
-            />
+            {isOnline ? (
+              <Wifi className="w-3.5 h-3.5 text-emerald-600" />
+            ) : (
+              <WifiOff className="w-3.5 h-3.5 text-rose-600" />
+            )}
             <span>{isOnline ? 'Online' : 'Offline'}</span>
           </div>
 
-          {/* Drive Sync Status Button */}
-          <button
-            onClick={onTriggerSync}
-            disabled={syncStatus.isSyncing || !isOnline}
-            className={`flex items-center gap-1.5 px-2.5 py-1 sm:px-3 sm:py-1.5 rounded-full text-xs font-medium border transition-all duration-200 active:scale-95 ${
-              syncStatus.isSyncing
-                ? 'bg-indigo-50 text-indigo-700 border-indigo-200'
-                : syncStatus.isConnected
-                ? 'bg-sky-500/10 text-sky-700 border-sky-400/30 hover:bg-sky-500/20'
-                : 'bg-slate-100 text-slate-600 border-slate-200 hover:bg-slate-200/70'
-            }`}
-            title={
-              syncStatus.isConnected
-                ? 'Google Drive synced. Tap to force sync.'
-                : 'Google Drive disconnected. Tap settings to configure.'
-            }
-          >
-            {syncStatus.isSyncing ? (
-              <>
-                <RefreshCw className="w-3.5 h-3.5 animate-spin text-indigo-600" />
-                <span className="hidden sm:inline">Syncing...</span>
-              </>
-            ) : syncStatus.isConnected ? (
-              <>
-                <Cloud className="w-3.5 h-3.5 text-sky-600" />
-                <span className="hidden sm:inline">Drive Synced</span>
-              </>
-            ) : (
-              <>
-                <CloudOff className="w-3.5 h-3.5 text-slate-400" />
-                <span className="hidden sm:inline">Sync Off</span>
-              </>
-            )}
-          </button>
-
-          {/* Settings / Profile Avatar Button */}
+          {/* Settings / Account Avatar Button */}
           <button
             onClick={onOpenSettings}
             className="w-9 h-9 sm:w-10 sm:h-10 rounded-full ios-glass border border-white/80 shadow-sm flex items-center justify-center text-slate-700 hover:text-indigo-600 hover:bg-white/90 active:scale-90 transition-all duration-150 overflow-hidden"
             aria-label="Settings and Profile"
           >
-            {settings.doctorPhoto ? (
+            {avatar ? (
               <img
-                src={settings.doctorPhoto}
-                alt={settings.doctorName}
+                src={avatar}
+                alt={avatarAlt}
                 className="w-full h-full object-cover"
+                onError={(e) => {
+                  (e.currentTarget as HTMLElement).style.display = 'none';
+                }}
               />
             ) : (
               <Settings className="w-5 h-5 text-slate-600 hover:text-indigo-600" />

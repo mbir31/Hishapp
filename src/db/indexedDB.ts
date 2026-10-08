@@ -29,10 +29,9 @@ export const DEFAULT_SETTINGS: ClinicSettings = {
   doctorName: 'Dr. MBR (BDS, PGT-OMS)',
   currencySymbol: '৳',
   sharePercentage: 40,
-  googleClientId: '793990427738-67b27r1u1miuscmcu7rtlf593mlh9klk.apps.googleusercontent.com',
-  spreadsheetId: null,
-  lastSyncTimestamp: null,
-  autoSync: true,
+  autoBackup: true,
+  lastDriveSnapshotTimestamp: null,
+  driveFolderId: null,
   procedures: DEFAULT_PROCEDURES,
   amountPresets: DEFAULT_AMOUNT_PRESETS,
 };
@@ -51,7 +50,6 @@ function openDB(): Promise<IDBDatabase> {
         store.createIndex('date', 'date', { unique: false });
         store.createIndex('settlementStatus', 'settlementStatus', { unique: false });
         store.createIndex('settlementId', 'settlementId', { unique: false });
-        store.createIndex('synced', 'synced', { unique: false });
       }
 
       if (!db.objectStoreNames.contains('settlements')) {
@@ -61,12 +59,6 @@ function openDB(): Promise<IDBDatabase> {
 
       if (!db.objectStoreNames.contains('settings')) {
         db.createObjectStore('settings', { keyPath: 'key' });
-      }
-
-      if (!db.objectStoreNames.contains('sync_queue')) {
-        const store = db.createObjectStore('sync_queue', { keyPath: 'id' });
-        store.createIndex('type', 'type', { unique: false });
-        store.createIndex('timestamp', 'timestamp', { unique: false });
       }
 
       if (!db.objectStoreNames.contains('audit_logs')) {
@@ -389,7 +381,6 @@ export async function deleteSettlement(settlementId: string): Promise<void> {
       if (entry.settlementId === settlementId) {
         entry.settlementStatus = 'Pending';
         entry.settlementId = null;
-        entry.synced = false;
         patientStore.put(entry);
       }
     }
@@ -495,7 +486,6 @@ export async function executeSettlement(params: {
         for (const entry of eligible) {
           entry.settlementStatus = 'Settled';
           entry.settlementId = settlementId;
-          entry.synced = false;
           entry.updatedAt = Date.now();
           patientStore.put(entry);
         }
@@ -513,7 +503,6 @@ export async function executeSettlement(params: {
           dueBalance,
           remarks: params.remarks,
           patientIds,
-          synced: false,
           createdAt: Date.now(),
         };
 
@@ -565,10 +554,6 @@ export async function getSettings(): Promise<ClinicSettings> {
           clinicLogo,
           procedures,
           amountPresets,
-          googleClientId:
-            stored.googleClientId && stored.googleClientId.trim() !== ''
-              ? stored.googleClientId
-              : DEFAULT_SETTINGS.googleClientId,
         });
       } else {
         resolve(DEFAULT_SETTINGS);
@@ -617,7 +602,6 @@ export async function seedDemoDataIfEmpty(): Promise<boolean> {
       settlementStatus: 'Settled',
       settlementId: 'ST-20261001-01',
       remarks: 'Upper right 1st molar, 1st session',
-      synced: false,
       createdAt: Date.now() - 86400000 * 7,
       updatedAt: Date.now() - 86400000 * 7,
     },
@@ -632,7 +616,6 @@ export async function seedDemoDataIfEmpty(): Promise<boolean> {
       settlementStatus: 'Settled',
       settlementId: 'ST-20261001-01',
       remarks: 'Subgingival calculus removal',
-      synced: false,
       createdAt: Date.now() - 86400000 * 7 + 1000,
       updatedAt: Date.now() - 86400000 * 7 + 1000,
     },
@@ -647,7 +630,6 @@ export async function seedDemoDataIfEmpty(): Promise<boolean> {
       settlementStatus: 'Pending',
       settlementId: null,
       remarks: 'Shade A2, fit checked',
-      synced: false,
       createdAt: Date.now() - 86400000 * 4,
       updatedAt: Date.now() - 86400000 * 4,
     },
@@ -662,7 +644,6 @@ export async function seedDemoDataIfEmpty(): Promise<boolean> {
       settlementStatus: 'Pending',
       settlementId: null,
       remarks: 'Lower left 3rd molar #38',
-      synced: false,
       createdAt: Date.now() - 86400000 * 2,
       updatedAt: Date.now() - 86400000 * 2,
     },
@@ -677,7 +658,6 @@ export async function seedDemoDataIfEmpty(): Promise<boolean> {
       settlementStatus: 'Pending',
       settlementId: null,
       remarks: 'Class II restoration',
-      synced: false,
       createdAt: Date.now() - 86400000 * 1,
       updatedAt: Date.now() - 86400000 * 1,
     },
@@ -692,7 +672,6 @@ export async function seedDemoDataIfEmpty(): Promise<boolean> {
       settlementStatus: 'Pending',
       settlementId: null,
       remarks: 'Premolar obturation done',
-      synced: false,
       createdAt: Date.now() - 3600000 * 4,
       updatedAt: Date.now() - 3600000 * 4,
     },
@@ -707,7 +686,6 @@ export async function seedDemoDataIfEmpty(): Promise<boolean> {
       settlementStatus: 'Pending',
       settlementId: null,
       remarks: 'Sensitivity management',
-      synced: false,
       createdAt: Date.now() - 3600000 * 1,
       updatedAt: Date.now() - 3600000 * 1,
     },
@@ -727,7 +705,6 @@ export async function seedDemoDataIfEmpty(): Promise<boolean> {
     dueBalance: 500, // ৳500 carried forward
     remarks: 'Cheque issued for ৳2,900. Remaining ৳500 due carried over to next week.',
     patientIds: ['entry-1', 'entry-2'],
-    synced: false,
     createdAt: Date.now() - 86400000 * 7,
   };
 
@@ -881,3 +858,58 @@ export async function clearAuditLogs(): Promise<void> {
   });
 }
 
+// ---------------- Google Drive Restore ---------------- //
+
+/**
+ * Replace the entire local database with the contents of a Google Drive
+ * backup snapshot. Cloud bookkeeping fields always stay local so a stale
+ * backup can never clobber this device's backup schedule/folder.
+ */
+export async function restoreAllData(payload: {
+  patientEntries: any[];
+  settlements: any[];
+  auditLogs?: any[];
+  patientProfiles?: any[];
+  settings?: Partial<ClinicSettings>;
+}): Promise<void> {
+  const current = await getSettings();
+  const backupSettings = payload.settings || {};
+  const mergedSettings: ClinicSettings = {
+    ...current,
+    ...backupSettings,
+    lastDriveSnapshotTimestamp: current.lastDriveSnapshotTimestamp ?? null,
+    driveFolderId: current.driveFolderId ?? null,
+    procedures:
+      backupSettings.procedures && backupSettings.procedures.length > 0
+        ? backupSettings.procedures
+        : current.procedures,
+    amountPresets:
+      backupSettings.amountPresets && backupSettings.amountPresets.length > 0
+        ? backupSettings.amountPresets
+        : current.amountPresets,
+  };
+
+  const db = await openDB();
+
+  const clearAndFill = (storeName: string, rows: any[]) =>
+    new Promise<void>((resolve, reject) => {
+      const tx = db.transaction(storeName, 'readwrite');
+      const store = tx.objectStore(storeName);
+      store.clear();
+      for (const row of rows) store.put(row);
+      tx.oncomplete = () => resolve();
+      tx.onerror = () => reject(tx.error);
+    });
+
+  await clearAndFill('patient_entries', payload.patientEntries || []);
+  await clearAndFill('settlements', payload.settlements || []);
+  await clearAndFill('patient_profiles', payload.patientProfiles || []);
+  await clearAndFill('audit_logs', payload.auditLogs || []);
+
+  await new Promise<void>((resolve, reject) => {
+    const tx = db.transaction('settings', 'readwrite');
+    tx.objectStore('settings').put({ key: 'app_settings', value: mergedSettings });
+    tx.oncomplete = () => resolve();
+    tx.onerror = () => reject(tx.error);
+  });
+}

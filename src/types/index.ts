@@ -9,7 +9,6 @@ export interface PatientEntry {
   settlementStatus: 'Pending' | 'Settled';
   settlementId?: string | null;
   remarks: string;
-  synced: boolean;
   createdAt: number;
   updatedAt: number;
 }
@@ -27,7 +26,6 @@ export interface Settlement {
   dueBalance: number; // totalPayable - amountReceived (carries forward)
   remarks: string;
   patientIds: string[]; // List of entry IDs settled in this batch
-  synced: boolean;
   createdAt: number;
 }
 
@@ -56,12 +54,9 @@ export interface ClinicSettings {
   doctorPhoto?: string;
   currencySymbol: string;
   sharePercentage: number;
-  googleClientId: string;
-  spreadsheetId?: string | null;
-  lastSyncTimestamp?: number | null;
+  autoBackup: boolean;
   lastDriveSnapshotTimestamp?: number | null;
   driveFolderId?: string | null;
-  autoSync: boolean;
   procedures?: string[];
   amountPresets?: AmountPreset[];
 }
