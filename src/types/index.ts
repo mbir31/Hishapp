@@ -54,6 +54,9 @@ export interface ClinicSettings {
   doctorPhoto?: string;
   currencySymbol: string;
   sharePercentage: number;
+  autoBackup: boolean;
+  lastDriveSnapshotTimestamp?: number | null;
+  driveFolderId?: string | null;
   procedures?: string[];
   amountPresets?: AmountPreset[];
 }

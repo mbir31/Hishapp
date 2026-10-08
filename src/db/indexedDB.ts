@@ -29,6 +29,9 @@ export const DEFAULT_SETTINGS: ClinicSettings = {
   doctorName: 'Dr. MBR (BDS, PGT-OMS)',
   currencySymbol: '৳',
   sharePercentage: 40,
+  autoBackup: true,
+  lastDriveSnapshotTimestamp: null,
+  driveFolderId: null,
   procedures: DEFAULT_PROCEDURES,
   amountPresets: DEFAULT_AMOUNT_PRESETS,
 };
@@ -855,3 +858,58 @@ export async function clearAuditLogs(): Promise<void> {
   });
 }
 
+// ---------------- Google Drive Restore ---------------- //
+
+/**
+ * Replace the entire local database with the contents of a Google Drive
+ * backup snapshot. Cloud bookkeeping fields always stay local so a stale
+ * backup can never clobber this device's backup schedule/folder.
+ */
+export async function restoreAllData(payload: {
+  patientEntries: any[];
+  settlements: any[];
+  auditLogs?: any[];
+  patientProfiles?: any[];
+  settings?: Partial<ClinicSettings>;
+}): Promise<void> {
+  const current = await getSettings();
+  const backupSettings = payload.settings || {};
+  const mergedSettings: ClinicSettings = {
+    ...current,
+    ...backupSettings,
+    lastDriveSnapshotTimestamp: current.lastDriveSnapshotTimestamp ?? null,
+    driveFolderId: current.driveFolderId ?? null,
+    procedures:
+      backupSettings.procedures && backupSettings.procedures.length > 0
+        ? backupSettings.procedures
+        : current.procedures,
+    amountPresets:
+      backupSettings.amountPresets && backupSettings.amountPresets.length > 0
+        ? backupSettings.amountPresets
+        : current.amountPresets,
+  };
+
+  const db = await openDB();
+
+  const clearAndFill = (storeName: string, rows: any[]) =>
+    new Promise<void>((resolve, reject) => {
+      const tx = db.transaction(storeName, 'readwrite');
+      const store = tx.objectStore(storeName);
+      store.clear();
+      for (const row of rows) store.put(row);
+      tx.oncomplete = () => resolve();
+      tx.onerror = () => reject(tx.error);
+    });
+
+  await clearAndFill('patient_entries', payload.patientEntries || []);
+  await clearAndFill('settlements', payload.settlements || []);
+  await clearAndFill('patient_profiles', payload.patientProfiles || []);
+  await clearAndFill('audit_logs', payload.auditLogs || []);
+
+  await new Promise<void>((resolve, reject) => {
+    const tx = db.transaction('settings', 'readwrite');
+    tx.objectStore('settings').put({ key: 'app_settings', value: mergedSettings });
+    tx.oncomplete = () => resolve();
+    tx.onerror = () => reject(tx.error);
+  });
+}
