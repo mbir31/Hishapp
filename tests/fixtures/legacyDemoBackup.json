@@ -1,0 +1,237 @@
+{
+  "patientEntries": [
+    {
+      "id": "entry-7",
+      "serial": 7,
+      "date": "2026-10-08",
+      "patientName": "Amina Begum",
+      "procedure": "Scaling & Fluoride Therapy",
+      "receivedAmount": 2000,
+      "doctorShare": 800,
+      "settlementStatus": "Pending",
+      "settlementId": null,
+      "remarks": "Sensitivity management",
+      "createdAt": 1791491428959,
+      "updatedAt": 1791491428959
+    },
+    {
+      "id": "entry-6",
+      "serial": 6,
+      "date": "2026-10-08",
+      "patientName": "Zubair Ahmed",
+      "procedure": "Root Canal Treatment (RCT)",
+      "receivedAmount": 7000,
+      "doctorShare": 2800,
+      "settlementStatus": "Pending",
+      "settlementId": null,
+      "remarks": "Premolar obturation done",
+      "createdAt": 1791480628959,
+      "updatedAt": 1791480628959
+    },
+    {
+      "id": "entry-5",
+      "serial": 5,
+      "date": "2026-10-07",
+      "patientName": "Nusrat Jahan",
+      "procedure": "Composite Light Cure Filling",
+      "receivedAmount": 3000,
+      "doctorShare": 1200,
+      "settlementStatus": "Pending",
+      "settlementId": null,
+      "remarks": "Class II restoration",
+      "createdAt": 1791408628959,
+      "updatedAt": 1791408628959
+    },
+    {
+      "id": "entry-4",
+      "serial": 4,
+      "date": "2026-10-06",
+      "patientName": "Kazi M. Rahman",
+      "procedure": "Surgical Extraction (Impacted)",
+      "receivedAmount": 5000,
+      "doctorShare": 2000,
+      "settlementStatus": "Pending",
+      "settlementId": null,
+      "remarks": "Lower left 3rd molar #38",
+      "createdAt": 1791322228959,
+      "updatedAt": 1791322228959
+    },
+    {
+      "id": "entry-3",
+      "serial": 3,
+      "date": "2026-10-04",
+      "patientName": "Farhana Chowdhury",
+      "procedure": "Zirconia Crown Fixation",
+      "receivedAmount": 8500,
+      "doctorShare": 3400,
+      "settlementStatus": "Pending",
+      "settlementId": null,
+      "remarks": "Shade A2, fit checked",
+      "createdAt": 1791149428959,
+      "updatedAt": 1791149428959
+    },
+    {
+      "id": "entry-2",
+      "serial": 2,
+      "date": "2026-10-01",
+      "patientName": "Tanvir Hossain",
+      "procedure": "Deep Scaling & Polishing",
+      "receivedAmount": 2500,
+      "doctorShare": 1000,
+      "settlementStatus": "Settled",
+      "settlementId": "ST-20261001-01",
+      "remarks": "Subgingival calculus removal",
+      "createdAt": 1790890229959,
+      "updatedAt": 1790890229959
+    },
+    {
+      "id": "entry-1",
+      "serial": 1,
+      "date": "2026-10-01",
+      "patientName": "Mrs. Selina Akhter",
+      "procedure": "Root Canal Treatment (RCT)",
+      "receivedAmount": 6000,
+      "doctorShare": 2400,
+      "settlementStatus": "Settled",
+      "settlementId": "ST-20261001-01",
+      "remarks": "Upper right 1st molar, 1st session",
+      "createdAt": 1790890228959,
+      "updatedAt": 1790890228959
+    }
+  ],
+  "settlements": [
+    {
+      "settlementId": "ST-20261001-01",
+      "settlementDate": "2026-10-01",
+      "periodFrom": "2026-09-24",
+      "periodTo": "2026-10-01",
+      "patientCount": 2,
+      "periodShare": 3400,
+      "previousDue": 0,
+      "totalPayable": 3400,
+      "amountReceived": 2900,
+      "dueBalance": 500,
+      "remarks": "Cheque issued for ৳2,900. Remaining ৳500 due carried over to next week.",
+      "patientIds": [
+        "entry-1",
+        "entry-2"
+      ],
+      "createdAt": 1790890228959
+    }
+  ],
+  "patientProfiles": [
+    {
+      "id": "amina begum",
+      "name": "Amina Begum",
+      "phone": "",
+      "notes": "",
+      "totalVisits": 1,
+      "totalBilled": 2000,
+      "totalDoctorShare": 800,
+      "firstVisitDate": "2026-10-08",
+      "lastVisitDate": "2026-10-08",
+      "procedures": [
+        "Scaling & Fluoride Therapy"
+      ],
+      "createdAt": 1791495028970,
+      "updatedAt": 1791495028970
+    },
+    {
+      "id": "zubair ahmed",
+      "name": "Zubair Ahmed",
+      "phone": "",
+      "notes": "",
+      "totalVisits": 1,
+      "totalBilled": 7000,
+      "totalDoctorShare": 2800,
+      "firstVisitDate": "2026-10-08",
+      "lastVisitDate": "2026-10-08",
+      "procedures": [
+        "Root Canal Treatment (RCT)"
+      ],
+      "createdAt": 1791495028971,
+      "updatedAt": 1791495028971
+    },
+    {
+      "id": "nusrat jahan",
+      "name": "Nusrat Jahan",
+      "phone": "",
+      "notes": "",
+      "totalVisits": 1,
+      "totalBilled": 3000,
+      "totalDoctorShare": 1200,
+      "firstVisitDate": "2026-10-07",
+      "lastVisitDate": "2026-10-07",
+      "procedures": [
+        "Composite Light Cure Filling"
+      ],
+      "createdAt": 1791495028971,
+      "updatedAt": 1791495028971
+    },
+    {
+      "id": "kazi m. rahman",
+      "name": "Kazi M. Rahman",
+      "phone": "",
+      "notes": "",
+      "totalVisits": 1,
+      "totalBilled": 5000,
+      "totalDoctorShare": 2000,
+      "firstVisitDate": "2026-10-06",
+      "lastVisitDate": "2026-10-06",
+      "procedures": [
+        "Surgical Extraction (Impacted)"
+      ],
+      "createdAt": 1791495028971,
+      "updatedAt": 1791495028971
+    },
+    {
+      "id": "farhana chowdhury",
+      "name": "Farhana Chowdhury",
+      "phone": "",
+      "notes": "",
+      "totalVisits": 1,
+      "totalBilled": 8500,
+      "totalDoctorShare": 3400,
+      "firstVisitDate": "2026-10-04",
+      "lastVisitDate": "2026-10-04",
+      "procedures": [
+        "Zirconia Crown Fixation"
+      ],
+      "createdAt": 1791495028972,
+      "updatedAt": 1791495028972
+    },
+    {
+      "id": "mrs. selina akhter",
+      "name": "Mrs. Selina Akhter",
+      "phone": "",
+      "notes": "",
+      "totalVisits": 1,
+      "totalBilled": 6000,
+      "totalDoctorShare": 2400,
+      "firstVisitDate": "2026-10-01",
+      "lastVisitDate": "2026-10-01",
+      "procedures": [
+        "Root Canal Treatment (RCT)"
+      ],
+      "createdAt": 1791495028972,
+      "updatedAt": 1791495028972
+    },
+    {
+      "id": "tanvir hossain",
+      "name": "Tanvir Hossain",
+      "phone": "",
+      "notes": "",
+      "totalVisits": 1,
+      "totalBilled": 2500,
+      "totalDoctorShare": 1000,
+      "firstVisitDate": "2026-10-01",
+      "lastVisitDate": "2026-10-01",
+      "procedures": [
+        "Deep Scaling & Polishing"
+      ],
+      "createdAt": 1791495028972,
+      "updatedAt": 1791495028972
+    }
+  ],
+  "auditLogs": []
+}

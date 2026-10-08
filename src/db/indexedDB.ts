@@ -1,4 +1,5 @@
 import { AmountPreset, AuditLogEntry, ClinicSettings, PatientEntry, PatientProfile, Settlement } from '../types';
+import { isLegacyDemoEntry, isLegacyDemoProfile, isLegacyDemoSettlement } from './legacyDemoData';
 
 const DB_NAME = 'DentalIncomeTrackerDB';
 const DB_VERSION = 3;
@@ -575,162 +576,120 @@ export async function saveSettings(settings: Partial<ClinicSettings>): Promise<C
   });
 }
 
-// ---------------- Initial Seeding ---------------- //
+// ---------------- Legacy Demo Cleanup ---------------- //
 
-export async function seedDemoDataIfEmpty(): Promise<boolean> {
-  const entries = await getAllPatientEntries();
-  if (entries.length > 0) return false;
+/**
+ * Remove only untouched samples installed by older app versions. Fresh
+ * databases stay empty, and settings (including all presets) are untouched.
+ * Run before the initial load and after restoring an older backup.
+ */
+export async function removeLegacyDemoData(): Promise<boolean> {
+  const db = await openDB();
+  const profilesToRebuild = new Set<string>();
+  let removed = false;
 
-  const today = new Date();
-  const fmt = (d: Date) => d.toISOString().split('T')[0];
-
-  const d0 = fmt(today);
-  const d1 = fmt(new Date(today.getTime() - 86400000 * 1));
-  const d2 = fmt(new Date(today.getTime() - 86400000 * 2));
-  const d3 = fmt(new Date(today.getTime() - 86400000 * 4));
-  const d5 = fmt(new Date(today.getTime() - 86400000 * 7));
-
-  // Seed sample procedures representative of a dental clinic
-  const sampleEntries: PatientEntry[] = [
-    {
-      id: 'entry-1',
-      serial: 1,
-      date: d5,
-      patientName: 'Mrs. Selina Akhter',
-      procedure: 'Root Canal Treatment (RCT)',
-      receivedAmount: 6000,
-      doctorShare: 2400,
-      settlementStatus: 'Settled',
-      settlementId: 'ST-20261001-01',
-      remarks: 'Upper right 1st molar, 1st session',
-      createdAt: Date.now() - 86400000 * 7,
-      updatedAt: Date.now() - 86400000 * 7,
-    },
-    {
-      id: 'entry-2',
-      serial: 2,
-      date: d5,
-      patientName: 'Tanvir Hossain',
-      procedure: 'Deep Scaling & Polishing',
-      receivedAmount: 2500,
-      doctorShare: 1000,
-      settlementStatus: 'Settled',
-      settlementId: 'ST-20261001-01',
-      remarks: 'Subgingival calculus removal',
-      createdAt: Date.now() - 86400000 * 7 + 1000,
-      updatedAt: Date.now() - 86400000 * 7 + 1000,
-    },
-    {
-      id: 'entry-3',
-      serial: 3,
-      date: d3,
-      patientName: 'Farhana Chowdhury',
-      procedure: 'Zirconia Crown Fixation',
-      receivedAmount: 8500,
-      doctorShare: 3400,
-      settlementStatus: 'Pending',
-      settlementId: null,
-      remarks: 'Shade A2, fit checked',
-      createdAt: Date.now() - 86400000 * 4,
-      updatedAt: Date.now() - 86400000 * 4,
-    },
-    {
-      id: 'entry-4',
-      serial: 4,
-      date: d2,
-      patientName: 'Kazi M. Rahman',
-      procedure: 'Surgical Extraction (Impacted)',
-      receivedAmount: 5000,
-      doctorShare: 2000,
-      settlementStatus: 'Pending',
-      settlementId: null,
-      remarks: 'Lower left 3rd molar #38',
-      createdAt: Date.now() - 86400000 * 2,
-      updatedAt: Date.now() - 86400000 * 2,
-    },
-    {
-      id: 'entry-5',
-      serial: 5,
-      date: d1,
-      patientName: 'Nusrat Jahan',
-      procedure: 'Composite Light Cure Filling',
-      receivedAmount: 3000,
-      doctorShare: 1200,
-      settlementStatus: 'Pending',
-      settlementId: null,
-      remarks: 'Class II restoration',
-      createdAt: Date.now() - 86400000 * 1,
-      updatedAt: Date.now() - 86400000 * 1,
-    },
-    {
-      id: 'entry-6',
-      serial: 6,
-      date: d0,
-      patientName: 'Zubair Ahmed',
-      procedure: 'Root Canal Treatment (RCT)',
-      receivedAmount: 7000,
-      doctorShare: 2800,
-      settlementStatus: 'Pending',
-      settlementId: null,
-      remarks: 'Premolar obturation done',
-      createdAt: Date.now() - 3600000 * 4,
-      updatedAt: Date.now() - 3600000 * 4,
-    },
-    {
-      id: 'entry-7',
-      serial: 7,
-      date: d0,
-      patientName: 'Amina Begum',
-      procedure: 'Scaling & Fluoride Therapy',
-      receivedAmount: 2000,
-      doctorShare: 800,
-      settlementStatus: 'Pending',
-      settlementId: null,
-      remarks: 'Sensitivity management',
-      createdAt: Date.now() - 3600000 * 1,
-      updatedAt: Date.now() - 3600000 * 1,
-    },
-  ];
-
-  // Also seed one prior settlement that left a carry-over balance of ৳500
-  const sampleSettlement: Settlement = {
-    settlementId: 'ST-20261001-01',
-    settlementDate: d5,
-    periodFrom: fmt(new Date(today.getTime() - 86400000 * 14)),
-    periodTo: d5,
-    patientCount: 2,
-    periodShare: 3400,
-    previousDue: 0,
-    totalPayable: 3400,
-    amountReceived: 2900,
-    dueBalance: 500, // ৳500 carried forward
-    remarks: 'Cheque issued for ৳2,900. Remaining ৳500 due carried over to next week.',
-    patientIds: ['entry-1', 'entry-2'],
-    createdAt: Date.now() - 86400000 * 7,
-  };
-
-  const { store: pStore, tx: pTx } = await getStore('patient_entries', 'readwrite');
-  for (const item of sampleEntries) {
-    pStore.put(item);
-  }
-  await new Promise((r) => {
-    pTx.oncomplete = r;
-  });
-
-  const { store: sStore, tx: sTx } = await getStore('settlements', 'readwrite');
-  sStore.put(sampleSettlement);
-  await new Promise((r) => {
-    sTx.oncomplete = r;
-  });
-
-  // Generate profiles for seeded demo data
   try {
-    await syncAllPatientProfiles();
-  } catch (e) {
-    console.warn('Seeding profiles warning:', e);
+    await new Promise<void>((resolve, reject) => {
+      const tx = db.transaction(
+        ['patient_entries', 'settlements', 'patient_profiles', 'audit_logs'],
+        'readwrite'
+      );
+      const entryStore = tx.objectStore('patient_entries');
+      const settlementStore = tx.objectStore('settlements');
+      const profileStore = tx.objectStore('patient_profiles');
+      const entriesReq = entryStore.getAll();
+      const settlementsReq = settlementStore.getAll();
+      const profilesReq = profileStore.getAll();
+      const auditReq = tx.objectStore('audit_logs').getAll();
+      let pendingReads = 4;
+
+      const cleanSamples = () => {
+        if (--pendingReads !== 0) return;
+
+        const entries = entriesReq.result as PatientEntry[];
+        const settlements = settlementsReq.result as Settlement[];
+        const profiles = profilesReq.result as PatientProfile[];
+        // Sample seeding never wrote audit logs. An audited record has been
+        // created/edited/deleted by the user and must be preserved.
+        const touchedIds = new Set(
+          (auditReq.result as AuditLogEntry[]).map((log) => log.targetId)
+        );
+        const demoEntries = entries.filter(
+          (entry) => isLegacyDemoEntry(entry) && !touchedIds.has(entry.id)
+        );
+        const demoIds = new Set(demoEntries.map((entry) => entry.id));
+        const remainingEntries = entries.filter((entry) => !demoIds.has(entry.id));
+        const remainingNames = new Set(
+          remainingEntries.map((entry) => normalizePatientName(entry.patientName))
+        );
+        const removedNames = new Set(
+          demoEntries.map((entry) => normalizePatientName(entry.patientName))
+        );
+
+        for (const entry of demoEntries) {
+          entryStore.delete(entry.id);
+          removed = true;
+          if (remainingNames.has(normalizePatientName(entry.patientName))) {
+            profilesToRebuild.add(entry.patientName);
+          }
+        }
+
+        for (const settlement of settlements) {
+          if (
+            isLegacyDemoSettlement(settlement) &&
+            !touchedIds.has(settlement.settlementId) &&
+            !remainingEntries.some((entry) => entry.settlementId === settlement.settlementId)
+          ) {
+            settlementStore.delete(settlement.settlementId);
+            removed = true;
+          }
+        }
+
+        for (const profile of profiles) {
+          const name = normalizePatientName(profile.name);
+          if (!removedNames.has(name) || remainingNames.has(name)) continue;
+          const demoEntry = demoEntries.find(
+            (entry) => normalizePatientName(entry.patientName) === name
+          );
+          if (!demoEntry || !isLegacyDemoProfile(profile, demoEntry)) continue;
+
+          if (profile.phone?.trim() || profile.notes?.trim()) {
+            // Keep user-added contact details/notes, but not sample totals.
+            profileStore.put({
+              ...profile,
+              totalVisits: 0,
+              totalBilled: 0,
+              totalDoctorShare: 0,
+              firstVisitDate: '',
+              lastVisitDate: '',
+              procedures: [],
+              updatedAt: Date.now(),
+            });
+          } else {
+            profileStore.delete(profile.id);
+          }
+        }
+      };
+
+      entriesReq.onsuccess = cleanSamples;
+      settlementsReq.onsuccess = cleanSamples;
+      profilesReq.onsuccess = cleanSamples;
+      auditReq.onsuccess = cleanSamples;
+      tx.oncomplete = () => resolve();
+      tx.onerror = () => reject(tx.error);
+      tx.onabort = () => reject(tx.error);
+    });
+  } finally {
+    db.close();
   }
 
-  return true;
+  // If a genuine patient shares a sample name, retain their profile and
+  // recalculate its totals from genuine visits only, preserving notes/phone.
+  for (const name of profilesToRebuild) {
+    await updateProfileForPatient(name);
+  }
+
+  return removed;
 }
 
 // ---------------- Export Data Handlers ---------------- //
@@ -914,4 +873,6 @@ export async function restoreAllData(payload: {
     tx.oncomplete = () => resolve();
     tx.onerror = () => reject(tx.error);
   });
+
+  await removeLegacyDemoData();
 }

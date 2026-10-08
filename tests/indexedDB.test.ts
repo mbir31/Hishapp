@@ -1,0 +1,331 @@
+import assert from 'node:assert/strict';
+import { readFileSync } from 'node:fs';
+import { beforeEach, test } from 'node:test';
+import { IDBFactory } from 'fake-indexeddb';
+import 'fake-indexeddb/auto';
+import {
+  calculateSettlementSummary,
+  DEFAULT_AMOUNT_PRESETS,
+  DEFAULT_PROCEDURES,
+  exportAllDataJSON,
+  getAllAuditLogs,
+  getAllPatientEntries,
+  getAllPatientProfiles,
+  getAllSettlements,
+  getNextSerial,
+  getSettings,
+  removeLegacyDemoData,
+  restoreAllData,
+  savePatientEntry,
+  saveSettings,
+} from '../src/db/indexedDB';
+import type { AuditLogEntry, PatientEntry, PatientProfile, Settlement } from '../src/types';
+
+interface Snapshot {
+  patientEntries: PatientEntry[];
+  settlements: Settlement[];
+  patientProfiles: PatientProfile[];
+  auditLogs: AuditLogEntry[];
+}
+
+// Captured from the original seeder, not generated from cleanup fingerprints.
+const legacy: Snapshot = JSON.parse(
+  readFileSync(new URL('./fixtures/legacyDemoBackup.json', import.meta.url), 'utf8')
+);
+
+const realEntry: PatientEntry = {
+  id: 'entry-1791547200000-real',
+  serial: 8,
+  date: '2026-10-09',
+  patientName: 'Actual Patient',
+  procedure: 'RCT',
+  receivedAmount: 1000,
+  doctorShare: 400,
+  settlementStatus: 'Settled',
+  settlementId: 'ST-20261009-01',
+  remarks: 'User-entered visit',
+  createdAt: 1791547200000,
+  updatedAt: 1791547200000,
+};
+
+const realSettlement: Settlement = {
+  settlementId: 'ST-20261009-01',
+  settlementDate: '2026-10-09',
+  periodFrom: '2026-10-09',
+  periodTo: '2026-10-09',
+  patientCount: 1,
+  periodShare: 400,
+  previousDue: 0,
+  totalPayable: 400,
+  amountReceived: 200,
+  dueBalance: 200,
+  remarks: 'Actual clinic payment',
+  patientIds: [realEntry.id],
+  createdAt: realEntry.createdAt,
+};
+
+const realProfile: PatientProfile = {
+  id: 'actual patient',
+  name: realEntry.patientName,
+  phone: '0123456789',
+  notes: 'User-entered notes',
+  totalVisits: 1,
+  totalBilled: realEntry.receivedAmount,
+  totalDoctorShare: realEntry.doctorShare,
+  firstVisitDate: realEntry.date,
+  lastVisitDate: realEntry.date,
+  procedures: [realEntry.procedure],
+  createdAt: realEntry.createdAt,
+  updatedAt: realEntry.updatedAt,
+};
+
+const realAudit: AuditLogEntry = {
+  id: 'audit-real',
+  timestamp: realEntry.createdAt,
+  action: 'ENTRY_CREATED',
+  targetId: realEntry.id,
+  targetType: 'patient_entry',
+  details: 'User entered an actual visit',
+  newData: realEntry,
+};
+
+beforeEach(() => {
+  // Isolated browser database for each scenario, without changing app schema.
+  globalThis.indexedDB = new IDBFactory();
+});
+
+async function populate(data: Partial<Snapshot>): Promise<void> {
+  await getSettings(); // Create the same schema as a fresh app installation.
+  const db = await new Promise<IDBDatabase>((resolve, reject) => {
+    const req = indexedDB.open('DentalIncomeTrackerDB');
+    req.onsuccess = () => resolve(req.result);
+    req.onerror = () => reject(req.error);
+  });
+  try {
+    await new Promise<void>((resolve, reject) => {
+      const tx = db.transaction(
+        ['patient_entries', 'settlements', 'patient_profiles', 'audit_logs'],
+        'readwrite'
+      );
+      for (const entry of data.patientEntries || []) tx.objectStore('patient_entries').put(entry);
+      for (const settlement of data.settlements || []) tx.objectStore('settlements').put(settlement);
+      for (const profile of data.patientProfiles || []) tx.objectStore('patient_profiles').put(profile);
+      for (const log of data.auditLogs || []) tx.objectStore('audit_logs').put(log);
+      tx.oncomplete = () => resolve();
+      tx.onerror = () => reject(tx.error);
+      tx.onabort = () => reject(tx.error);
+    });
+  } finally {
+    db.close();
+  }
+}
+
+async function assertEmptyRecords(): Promise<void> {
+  assert.deepEqual(await getAllPatientEntries(), []);
+  assert.deepEqual(await getAllSettlements(), []);
+  assert.deepEqual(await getAllPatientProfiles(), []);
+  assert.deepEqual(await getAllAuditLogs(), []);
+}
+
+test('fresh databases have no sample records and retain all selection presets', async () => {
+  assert.equal(await removeLegacyDemoData(), false);
+  await assertEmptyRecords();
+  assert.equal(await getNextSerial(), 1);
+  const settings = await getSettings();
+  assert.deepEqual(settings.procedures, DEFAULT_PROCEDURES);
+  assert.deepEqual(settings.procedures, ['Visit', 'RCT', 'Filling', 'Scaling', 'Extraction', 'Pulpectomy', 'Crown']);
+  assert.deepEqual(settings.amountPresets, DEFAULT_AMOUNT_PRESETS);
+  assert.deepEqual(settings.amountPresets?.map((preset) => preset.amount), [0, 0, 500, 1000, 2000, 3000, 5000]);
+  assert.equal(settings.amountPresets?.[0].label, 'No Payment');
+  assert.equal(settings.amountPresets?.[1].label, 'Free Campaign');
+});
+
+test('cleans all old demo visits, payments and profiles without reseeding on reload', async () => {
+  await populate(legacy);
+  const settingsBefore = await getSettings();
+  assert.equal(await removeLegacyDemoData(), true);
+  await assertEmptyRecords();
+  assert.deepEqual(await getSettings(), settingsBefore);
+  assert.equal(await getNextSerial(), 1);
+
+  const summary = await calculateSettlementSummary('2026-01-01', '2026-12-31', 0);
+  assert.equal(summary.patientCount, 0);
+  assert.equal(summary.periodShare, 0);
+  assert.equal(summary.previousDue, 0);
+  assert.equal(summary.totalPayable, 0);
+  assert.equal(summary.remainingDuePreview, 0);
+  const exported = JSON.parse(await exportAllDataJSON());
+  assert.deepEqual(exported.patientEntries, []);
+  assert.deepEqual(exported.settlements, []);
+
+  assert.equal(await removeLegacyDemoData(), false);
+  await assertEmptyRecords();
+});
+
+test('preserves genuine records, payments, profiles, audit logs and customized presets', async () => {
+  const settingsBefore = await saveSettings({
+    doctorName: 'User Doctor',
+    procedures: ['Custom Treatment'],
+    amountPresets: [{ id: 'custom-1250', label: 'Custom Payment', amount: 1250 }],
+    driveFolderId: 'user-drive-folder',
+    ledgerSpreadsheetId: 'user-ledger',
+    lastDriveSnapshotTimestamp: 123456,
+  });
+  await populate({
+    patientEntries: [...legacy.patientEntries, realEntry],
+    settlements: [...legacy.settlements, realSettlement],
+    patientProfiles: [...legacy.patientProfiles, realProfile],
+    auditLogs: [realAudit],
+  });
+
+  assert.equal(await removeLegacyDemoData(), true);
+  assert.deepEqual(await getAllPatientEntries(), [realEntry]);
+  assert.deepEqual(await getAllSettlements(), [realSettlement]);
+  assert.deepEqual(await getAllPatientProfiles(), [realProfile]);
+  assert.deepEqual(await getAllAuditLogs(), [realAudit]);
+  assert.deepEqual(await getSettings(), settingsBefore);
+  assert.equal(await getNextSerial(), 9);
+  assert.equal((await calculateSettlementSummary('2026-01-01', '2026-12-31', 0)).previousDue, 200);
+});
+
+test('does not classify genuine visits or payments by sample IDs or names alone', async () => {
+  const sameName = { ...legacy.patientEntries[0], id: realEntry.id, serial: 8 };
+  const sameId = { ...realEntry, id: 'entry-4', serial: 4 };
+  const samePaymentId = { ...realSettlement, settlementId: legacy.settlements[0].settlementId };
+  await populate({
+    patientEntries: [...legacy.patientEntries, sameName, sameId],
+    settlements: [samePaymentId],
+  });
+
+  assert.equal(await removeLegacyDemoData(), true);
+  assert.deepEqual((await getAllPatientEntries()).map((entry) => entry.id).sort(), [sameId.id, sameName.id].sort());
+  assert.deepEqual(await getAllSettlements(), [samePaymentId]);
+});
+
+test('preserves user-audited visits and payments even if their sample fingerprints still match', async () => {
+  const editedEntry = legacy.patientEntries.find((entry) => entry.id === 'entry-3')!;
+  const editedPayment = legacy.settlements[0];
+  const entryAudit: AuditLogEntry = { ...realAudit, id: 'audit-edit', action: 'ENTRY_EDITED', targetId: editedEntry.id };
+  const paymentAudit: AuditLogEntry = {
+    ...realAudit,
+    id: 'audit-payment',
+    action: 'SETTLEMENT_CREATED',
+    targetId: editedPayment.settlementId,
+    targetType: 'settlement',
+  };
+  await populate({ ...legacy, auditLogs: [entryAudit, paymentAudit] });
+
+  assert.equal(await removeLegacyDemoData(), true);
+  assert.deepEqual(await getAllPatientEntries(), [editedEntry]);
+  assert.deepEqual(await getAllSettlements(), [editedPayment]);
+  assert.equal((await getAllAuditLogs()).length, 2);
+});
+
+test('preserves date-only edits even when an old backup has no audit trail', async () => {
+  const dateEditedEntry = { ...legacy.patientEntries.find((entry) => entry.id === 'entry-3')!, date: '2026-10-09' };
+  const dateEditedPayment = { ...legacy.settlements[0], settlementDate: '2026-10-09' };
+  await populate({
+    patientEntries: [...legacy.patientEntries, dateEditedEntry],
+    settlements: [dateEditedPayment],
+  });
+
+  assert.equal(await removeLegacyDemoData(), true);
+  assert.deepEqual(await getAllPatientEntries(), [dateEditedEntry]);
+  assert.deepEqual(await getAllSettlements(), [dateEditedPayment]);
+});
+
+test('retains a demo-looking payment when a genuine visit still references it', async () => {
+  const linkedEntry = { ...realEntry, settlementId: legacy.settlements[0].settlementId };
+  await populate({ ...legacy, patientEntries: [...legacy.patientEntries, linkedEntry] });
+
+  assert.equal(await removeLegacyDemoData(), true);
+  assert.deepEqual(await getAllPatientEntries(), [linkedEntry]);
+  assert.deepEqual(await getAllSettlements(), legacy.settlements);
+});
+
+test('recalculates shared-name profiles from genuine visits while retaining contact notes', async () => {
+  const sharedNameEntry = { ...realEntry, patientName: 'Amina Begum' };
+  const sharedProfile = { ...legacy.patientProfiles.find((profile) => profile.name === 'Amina Begum')!, phone: '0123456789', notes: 'Real patient notes' };
+  await populate({
+    ...legacy,
+    patientEntries: [...legacy.patientEntries, sharedNameEntry],
+    patientProfiles: [...legacy.patientProfiles, sharedProfile],
+  });
+
+  assert.equal(await removeLegacyDemoData(), true);
+  assert.deepEqual(await getAllPatientEntries(), [sharedNameEntry]);
+  const [profile] = await getAllPatientProfiles();
+  assert.equal(profile.name, sharedNameEntry.patientName);
+  assert.equal(profile.totalVisits, 1);
+  assert.equal(profile.totalBilled, sharedNameEntry.receivedAmount);
+  assert.equal(profile.totalDoctorShare, sharedNameEntry.doctorShare);
+  assert.equal(profile.firstVisitDate, sharedNameEntry.date);
+  assert.equal(profile.lastVisitDate, sharedNameEntry.date);
+  assert.deepEqual(profile.procedures, [sharedNameEntry.procedure]);
+  assert.equal(profile.phone, sharedProfile.phone);
+  assert.equal(profile.notes, sharedProfile.notes);
+});
+
+test('keeps user-added profile notes without leaving sample billing totals', async () => {
+  const customProfile = { ...legacy.patientProfiles[0], notes: 'Keep these user notes' };
+  await populate({ ...legacy, patientProfiles: [...legacy.patientProfiles, customProfile] });
+
+  assert.equal(await removeLegacyDemoData(), true);
+  assert.deepEqual(await getAllPatientEntries(), []);
+  assert.deepEqual(await getAllSettlements(), []);
+  const [profile] = await getAllPatientProfiles();
+  assert.equal(profile.notes, customProfile.notes);
+  assert.equal(profile.totalVisits, 0);
+  assert.equal(profile.totalBilled, 0);
+  assert.equal(profile.totalDoctorShare, 0);
+  assert.deepEqual(profile.procedures, []);
+});
+
+test('does not remove standalone profiles merely because they share a sample name', async () => {
+  const genuineProfile = { ...legacy.patientProfiles[0], totalVisits: 3, totalBilled: 12000, totalDoctorShare: 4800 };
+  await populate({ ...legacy, patientProfiles: [...legacy.patientProfiles, genuineProfile] });
+
+  assert.equal(await removeLegacyDemoData(), true);
+  assert.deepEqual(await getAllPatientProfiles(), [genuineProfile]);
+});
+
+test('restoring an old backup cannot reintroduce untouched demo records', async () => {
+  const current = await saveSettings({
+    procedures: ['Custom Treatment'],
+    amountPresets: [{ id: 'custom-1250', label: 'Custom Payment', amount: 1250 }],
+  });
+  await restoreAllData(legacy);
+  await assertEmptyRecords();
+  assert.deepEqual(await getSettings(), current);
+
+  await restoreAllData({
+    patientEntries: [...legacy.patientEntries, realEntry],
+    settlements: [...legacy.settlements, realSettlement],
+    patientProfiles: [...legacy.patientProfiles, realProfile],
+    auditLogs: [realAudit],
+    settings: current,
+  });
+  assert.deepEqual(await getAllPatientEntries(), [realEntry]);
+  assert.deepEqual(await getAllSettlements(), [realSettlement]);
+  assert.deepEqual(await getAllPatientProfiles(), [realProfile]);
+  assert.deepEqual(await getSettings(), current);
+});
+
+test('the first real visit starts at serial 1 and survives subsequent startup cleanup', async () => {
+  await removeLegacyDemoData();
+  const firstEntry: PatientEntry = {
+    ...realEntry,
+    serial: await getNextSerial(),
+    settlementStatus: 'Pending',
+    settlementId: null,
+  };
+  assert.equal(firstEntry.serial, 1);
+  await savePatientEntry(firstEntry);
+
+  assert.equal(await removeLegacyDemoData(), false);
+  assert.deepEqual(await getAllPatientEntries(), [firstEntry]);
+  assert.equal((await getAllPatientProfiles()).length, 1);
+  assert.equal((await getAllAuditLogs()).length, 1);
+  assert.deepEqual(await getAllSettlements(), []);
+  assert.equal(await getNextSerial(), 2);
+});

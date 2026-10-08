@@ -5,9 +5,9 @@ import {
   getAllPatientEntries,
   getAllSettlements,
   getSettings,
+  removeLegacyDemoData,
   savePatientEntry,
   saveSettings,
-  seedDemoDataIfEmpty,
 } from './db/indexedDB';
 import { backupEngine, type BackupStatus } from './services/backupEngine';
 import { useOnlineStatus } from './hooks/useOnlineStatus';
@@ -87,11 +87,11 @@ export default function App() {
     }
   }, []);
 
-  // Initial load, seed, and cloud-backup engine startup
+  // Initial load and cloud-backup engine startup (no demo seeding)
   useEffect(() => {
     async function init() {
       try {
-        await seedDemoDataIfEmpty();
+        const removedDemoData = await removeLegacyDemoData();
         await refreshData();
 
         // Start the dual-backup engine: Firebase auth + Google Drive sync
@@ -102,6 +102,7 @@ export default function App() {
           onToast: showToast,
         });
         backupEngine.subscribe(setBackupStatus);
+        if (removedDemoData) backupEngine.onDataChanged();
       } catch (err) {
         console.error('Initialization error:', err);
       } finally {
