@@ -259,7 +259,6 @@ export const EntryTab: React.FC<EntryTabProps> = ({
         settlementStatus: 'Pending',
         settlementId: null,
         remarks: remarks.trim(),
-        synced: false,
         createdAt: Date.now(),
         updatedAt: Date.now(),
       };

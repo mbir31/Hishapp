@@ -39,8 +39,8 @@ self.addEventListener('activate', (event) => {
 });
 
 self.addEventListener('fetch', (event) => {
-  // Pass through non-GET requests and Google API calls to network
-  if (event.request.method !== 'GET' || event.request.url.includes('googleapis.com') || event.request.url.includes('accounts.google.com')) {
+  // Pass through non-GET requests and cross-origin calls to the network
+  if (event.request.method !== 'GET' || new URL(event.request.url).origin !== self.location.origin) {
     return;
   }
 

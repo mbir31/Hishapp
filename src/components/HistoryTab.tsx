@@ -221,7 +221,6 @@ export const HistoryTab: React.FC<HistoryTabProps> = ({
         ...editingEntry,
         receivedAmount,
         doctorShare,
-        synced: false,
         updatedAt: Date.now(),
       };
 

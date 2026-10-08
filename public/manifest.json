@@ -2,7 +2,7 @@
   "id": "/",
   "name": "Hisapp - Dental Clinic Income & Settlement Tracker",
   "short_name": "Hisapp",
-  "description": "Dental Clinic Income & Settlement Tracker for dental surgeons with 40% clinical share tracking and Google Drive sync.",
+  "description": "Dental Clinic Income & Settlement Tracker for dental surgeons with 40% clinical share tracking and offline-first storage.",
   "start_url": "/",
   "scope": "/",
   "display": "standalone",

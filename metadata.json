@@ -1,6 +1,5 @@
 {
   "name": "Hisapp",
-  "description": "Dental Clinic Income & Settlement Tracker for dental surgeons with 40% clinical share tracking, carry-forward settlements, and offline-first Google Drive & Sheets synchronization.",
-  "requestFramePermissions": [],
-  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+  "description": "Dental Clinic Income & Settlement Tracker for dental surgeons with 40% clinical share tracking, carry-forward settlements, and offline-first local storage.",
+  "requestFramePermissions": []
 }

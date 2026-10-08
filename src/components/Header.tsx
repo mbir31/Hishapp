@@ -1,22 +1,17 @@
 import React from 'react';
-import { Cloud, CloudOff, RefreshCw, Settings, Wifi, WifiOff } from 'lucide-react';
+import { Settings } from 'lucide-react';
 import { ClinicSettings } from '../types';
-import { SyncStatus } from '../services/googleSheets';
 
 interface HeaderProps {
   settings: ClinicSettings;
-  syncStatus: SyncStatus;
   isOnline: boolean;
   onOpenSettings: () => void;
-  onTriggerSync: () => void;
 }
 
 export const Header: React.FC<HeaderProps> = ({
   settings,
-  syncStatus,
   isOnline,
   onOpenSettings,
-  onTriggerSync,
 }) => {
   return (
     <header className="sticky top-0 z-40 w-full ios-glass-header px-4 py-3 sm:px-6">
@@ -64,7 +59,7 @@ export const Header: React.FC<HeaderProps> = ({
           </div>
         </div>
 
-        {/* Right: Live Connection Pill, Drive Sync, Settings Button */}
+        {/* Right: Live Connection Pill, Settings Button */}
         <div className="flex items-center gap-2 shrink-0">
           {/* Live Online/Offline Status Pill */}
           <div
@@ -82,41 +77,6 @@ export const Header: React.FC<HeaderProps> = ({
             />
             <span>{isOnline ? 'Online' : 'Offline'}</span>
           </div>
-
-          {/* Drive Sync Status Button */}
-          <button
-            onClick={onTriggerSync}
-            disabled={syncStatus.isSyncing || !isOnline}
-            className={`flex items-center gap-1.5 px-2.5 py-1 sm:px-3 sm:py-1.5 rounded-full text-xs font-medium border transition-all duration-200 active:scale-95 ${
-              syncStatus.isSyncing
-                ? 'bg-indigo-50 text-indigo-700 border-indigo-200'
-                : syncStatus.isConnected
-                ? 'bg-sky-500/10 text-sky-700 border-sky-400/30 hover:bg-sky-500/20'
-                : 'bg-slate-100 text-slate-600 border-slate-200 hover:bg-slate-200/70'
-            }`}
-            title={
-              syncStatus.isConnected
-                ? 'Google Drive synced. Tap to force sync.'
-                : 'Google Drive disconnected. Tap settings to configure.'
-            }
-          >
-            {syncStatus.isSyncing ? (
-              <>
-                <RefreshCw className="w-3.5 h-3.5 animate-spin text-indigo-600" />
-                <span className="hidden sm:inline">Syncing...</span>
-              </>
-            ) : syncStatus.isConnected ? (
-              <>
-                <Cloud className="w-3.5 h-3.5 text-sky-600" />
-                <span className="hidden sm:inline">Drive Synced</span>
-              </>
-            ) : (
-              <>
-                <CloudOff className="w-3.5 h-3.5 text-slate-400" />
-                <span className="hidden sm:inline">Sync Off</span>
-              </>
-            )}
-          </button>
 
           {/* Settings / Profile Avatar Button */}
           <button
