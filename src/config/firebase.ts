@@ -1,33 +1,23 @@
 /**
- * HISAPP — FIREBASE WEB APP CONFIGURATION
+ * HISAPP — FIREBASE WEB APP CONFIGURATION (PROJECT: hishapp1)
  * ─────────────────────────────────────────────────────────────────
- * This is the ONLY file you need to edit to link the app to your
- * Firebase project (hosting + authentication + Google Drive backup).
+ * Live values for the Firebase project that hosts this app.
+ * Security is enforced by Firebase Authentication + authorized domains;
+ * a web config is a public client identifier, not a secret.
  *
- * Where to find these values:
- *   1. Open https://console.firebase.google.com/ and select project "hishapp1"
- *   2. Click the ⚙️ gear icon → Project settings → General tab
- *   3. Scroll to "Your apps" → if no Web app exists yet, click the
- *      "</>" (Web) icon to register one (name it e.g. "Hisapp Web")
- *   4. Under "SDK setup and configuration" choose "Config" and copy the
- *      values into the object below, replacing every PASTE_... placeholder.
- *
- * NOTE: A Firebase web config is a public client identifier (not a secret)
- * and is safe to keep in this file. Security is enforced by Firebase
- * Authentication rules + authorized domains.
- *
- * Also make sure (Firebase Console):
+ * Requirements in the Firebase Console (already done):
  *   • Authentication → Sign-in method → Google → Enabled
- *   • Authentication → Settings → Authorized domains contains:
- *       localhost, hishapp1.web.app (both are added automatically)
+ *   • Authorized domains include hishapp1.web.app and localhost
  */
 export const firebaseConfig = {
-  apiKey: 'PASTE_YOUR_API_KEY',
+  apiKey: 'AIzaSyC2VQdCuMe5DD5dkjH_l2AjvfV2O4xKK2M',
   authDomain: 'hishapp1.firebaseapp.com',
+  databaseURL: 'https://hishapp1-default-rtdb.asia-southeast1.firebasedatabase.app',
   projectId: 'hishapp1',
   storageBucket: 'hishapp1.firebasestorage.app',
-  messagingSenderId: 'PASTE_YOUR_SENDER_ID',
-  appId: 'PASTE_YOUR_APP_ID',
+  messagingSenderId: '707696094388',
+  appId: '1:707696094388:web:a732f9bd2c945c550b3be1',
+  measurementId: 'G-D00YKC7CWJ',
 };
 
 /** True once real Firebase credentials have been pasted above. */
