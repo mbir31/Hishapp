@@ -22,7 +22,7 @@ export const BottomNav: React.FC<BottomNavProps> = ({
 
   return (
     <nav className="fixed bottom-0 left-0 right-0 z-40 pb-[env(safe-area-inset-bottom,0px)] ios-glass-nav">
-      <div className="max-w-md mx-auto px-4 py-1.5 flex items-center justify-around">
+      <div className="max-w-md mx-auto px-4 py-0.5 flex items-center justify-around">
         {navItems.map((item) => {
           const Icon = item.icon;
           const isActive = activeTab === item.id;
@@ -31,7 +31,7 @@ export const BottomNav: React.FC<BottomNavProps> = ({
             <button
               key={item.id}
               onClick={() => onChangeTab(item.id)}
-              className={`relative flex flex-col items-center justify-center py-1 px-3 sm:px-5 rounded-2xl transition-all duration-200 active:scale-95 group ${
+              className={`relative flex flex-col items-center justify-center py-0 px-3 sm:px-5 rounded-2xl transition-all duration-200 active:scale-95 group ${
                 isActive ? 'text-indigo-600 font-semibold' : 'text-slate-500 hover:text-slate-800'
               }`}
             >
@@ -41,7 +41,7 @@ export const BottomNav: React.FC<BottomNavProps> = ({
               )}
 
               {/* Icon Container with Badge */}
-              <div className="relative flex items-center justify-center p-1">
+              <div className="relative flex items-center justify-center p-0.5">
                 <Icon
                   className={`w-6 h-6 transition-transform duration-200 ${
                     isActive ? 'scale-110 stroke-[2.2]' : 'group-hover:scale-105 stroke-[1.8]'
