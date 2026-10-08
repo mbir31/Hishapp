@@ -57,6 +57,7 @@ export interface ClinicSettings {
   autoBackup: boolean;
   lastDriveSnapshotTimestamp?: number | null;
   driveFolderId?: string | null;
+  ledgerSpreadsheetId?: string | null;
   procedures?: string[];
   amountPresets?: AmountPreset[];
 }
