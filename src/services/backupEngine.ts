@@ -32,6 +32,7 @@ import {
   createDriveBackup,
   downloadLatestDriveBackup,
 } from './driveBackup';
+import { syncSheetsLedger } from './sheetsLedger';
 
 export type BackupPhase = 'not-configured' | 'signed-out' | 'idle' | 'syncing' | 'synced' | 'error';
 
@@ -142,6 +143,11 @@ class BackupEngine {
       if (freshToken) {
         const didRun = await checkAndRunWeeklyAutoBackup(freshToken);
         if (didRun) {
+          try {
+            await syncSheetsLedger(freshToken);
+          } catch (ledgerErr) {
+            console.warn('Weekly ledger sync notice:', ledgerErr);
+          }
           this.syncLastBackupTime();
           this.onToastCb?.(
             'Weekly Backup Saved',
@@ -306,6 +312,23 @@ class BackupEngine {
         }
 
         const result = await createDriveBackup(token);
+        // The JSON snapshot remains the restore source; ledger errors are non-fatal.
+        let ledgerNote = '';
+        try {
+          const ledger = await syncSheetsLedger(token);
+          ledgerNote = ` and Hisapp_Ledger updated (${ledger.entries} visits)`;
+        } catch (ledgerErr: any) {
+          console.warn('Ledger sheet sync notice:', ledgerErr);
+          if (trigger === 'manual') {
+            this.onToastCb?.(
+              'Sheet Sync Issue',
+              ledgerErr?.message?.startsWith('SHEETS_API_DISABLED')
+                ? 'Enable the Google Sheets API on the Firebase project to use Hisapp_Ledger. JSON backups are unaffected.'
+                : `Backup saved, but the ledger sheet could not update: ${ledgerErr?.message || 'unknown error'}`,
+              'warning'
+            );
+          }
+        }
         this.pendingChanges = false;
         await this.syncLastBackupTime();
         this.recomputePhase();
@@ -314,7 +337,7 @@ class BackupEngine {
         if (trigger === 'manual') {
           this.onToastCb?.(
             'Backed Up to Google Drive!',
-            `Saved "${result.fileName}" (${result.totalEntries} visits, ${result.totalSettlements} settlements) to ${result.folderName}/.`,
+            `Saved "${result.fileName}" (${result.totalEntries} visits, ${result.totalSettlements} settlements) to ${result.folderName}/${ledgerNote}.`,
             'success'
           );
         }
@@ -327,13 +350,20 @@ class BackupEngine {
             try {
               const freshToken = await ensureGoogleToken();
               const result = await createDriveBackup(freshToken);
+              let ledgerUpdated = false;
+              try {
+                await syncSheetsLedger(freshToken);
+                ledgerUpdated = true;
+              } catch (ledgerErr) {
+                console.warn('Ledger sheet sync notice:', ledgerErr);
+              }
               this.pendingChanges = false;
               await this.syncLastBackupTime();
               this.error = null;
               this.lastResult = result;
               this.onToastCb?.(
                 'Backed Up to Google Drive!',
-                `Saved "${result.fileName}" to ${result.folderName}/.`,
+                `Saved "${result.fileName}" to ${result.folderName}/${ledgerUpdated ? ' and updated Hisapp_Ledger' : ''}.`,
                 'success'
               );
             } catch (retryErr: any) {

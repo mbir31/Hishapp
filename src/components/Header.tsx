@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useEffect, useState } from 'react';
 import { Cloud, CloudOff, RefreshCw, Settings, ShieldAlert, Wifi, WifiOff } from 'lucide-react';
 import { ClinicSettings } from '../types';
 import type { BackupStatus } from '../services/backupEngine';
@@ -94,6 +94,11 @@ export const Header: React.FC<HeaderProps> = ({
 }) => {
   const avatar = backup.user?.photoURL || settings.doctorPhoto;
   const avatarAlt = backup.user?.name || settings.doctorName;
+  const [avatarFailed, setAvatarFailed] = useState(false);
+
+  useEffect(() => {
+    setAvatarFailed(false);
+  }, [avatar]);
 
   return (
     <header className="sticky top-0 z-40 w-full ios-glass-header px-4 py-3 sm:px-6">
@@ -169,15 +174,17 @@ export const Header: React.FC<HeaderProps> = ({
             className="w-9 h-9 sm:w-10 sm:h-10 rounded-full ios-glass border border-white/80 shadow-sm flex items-center justify-center text-slate-700 hover:text-indigo-600 hover:bg-white/90 active:scale-90 transition-all duration-150 overflow-hidden"
             aria-label="Settings and Profile"
           >
-            {avatar ? (
+            {avatar && !avatarFailed ? (
               <img
                 src={avatar}
                 alt={avatarAlt}
                 className="w-full h-full object-cover"
-                onError={(e) => {
-                  (e.currentTarget as HTMLElement).style.display = 'none';
-                }}
+                onError={() => setAvatarFailed(true)}
               />
+            ) : !avatarFailed && avatarAlt ? (
+              <span className="w-full h-full flex items-center justify-center bg-gradient-to-tr from-indigo-600 to-sky-500 text-white text-xs font-bold">
+                {avatarAlt.charAt(0).toUpperCase()}
+              </span>
             ) : (
               <Settings className="w-5 h-5 text-slate-600 hover:text-indigo-600" />
             )}

@@ -32,6 +32,7 @@ export const DEFAULT_SETTINGS: ClinicSettings = {
   autoBackup: true,
   lastDriveSnapshotTimestamp: null,
   driveFolderId: null,
+  ledgerSpreadsheetId: null,
   procedures: DEFAULT_PROCEDURES,
   amountPresets: DEFAULT_AMOUNT_PRESETS,
 };
@@ -879,6 +880,7 @@ export async function restoreAllData(payload: {
     ...backupSettings,
     lastDriveSnapshotTimestamp: current.lastDriveSnapshotTimestamp ?? null,
     driveFolderId: current.driveFolderId ?? null,
+    ledgerSpreadsheetId: current.ledgerSpreadsheetId ?? null,
     procedures:
       backupSettings.procedures && backupSettings.procedures.length > 0
         ? backupSettings.procedures

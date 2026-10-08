@@ -10,6 +10,7 @@ import {
   LogIn,
   LogOut,
   RotateCcw,
+  FileSpreadsheet,
 } from 'lucide-react';
 import { ClinicSettings } from '../types';
 import {
@@ -315,6 +316,17 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
                   <CloudUpload className={`w-3.5 h-3.5 ${backup.phase === 'syncing' ? 'animate-pulse' : ''}`} />
                   <span>{backup.phase === 'syncing' ? 'Backing Up...' : 'Backup to Drive Now'}</span>
                 </button>
+                {settings.ledgerSpreadsheetId && (
+                  <a
+                    href={`https://docs.google.com/spreadsheets/d/${settings.ledgerSpreadsheetId}/edit`}
+                    target="_blank"
+                    rel="noreferrer"
+                    className="px-3.5 py-2 rounded-xl bg-emerald-50 text-emerald-700 border border-emerald-200 text-xs font-semibold flex items-center gap-1.5 hover:bg-emerald-100 transition"
+                  >
+                    <FileSpreadsheet className="w-3.5 h-3.5" />
+                    <span>Open Ledger Sheet</span>
+                  </a>
+                )}
                 <button
                   type="button"
                   onClick={() => {
