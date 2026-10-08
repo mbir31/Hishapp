@@ -1,0 +1,25 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" width="512" height="512">
+  <defs>
+    <linearGradient id="bgGrad" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#4F46E5" />
+      <stop offset="50%" stop-color="#06B6D4" />
+      <stop offset="100%" stop-color="#10B981" />
+    </linearGradient>
+    <filter id="shadow" x="-10%" y="-10%" width="130%" height="130%">
+      <feDropShadow dx="0" dy="12" stdDeviation="16" flood-color="#000000" flood-opacity="0.25"/>
+    </filter>
+  </defs>
+  <!-- Background squircle -->
+  <rect width="512" height="512" rx="128" fill="url(#bgGrad)"/>
+  
+  <!-- Subtle inner glass glow -->
+  <rect x="24" y="24" width="464" height="464" rx="112" fill="none" stroke="white" stroke-opacity="0.3" stroke-width="4"/>
+  
+  <!-- Dental Tooth Icon in clean white with shadow -->
+  <g filter="url(#shadow)" fill="#FFFFFF">
+    <path d="M256 100 C190 100 144 145 144 200 C144 245 160 280 180 340 C195 385 210 412 230 412 C245 412 250 390 256 360 C262 390 267 412 282 412 C302 412 317 385 332 340 C352 280 368 245 368 200 C368 145 322 100 256 100 Z M215 170 C225 170 232 178 232 190 C232 202 225 210 215 210 C205 210 198 202 198 190 C198 178 205 170 215 170 Z M297 170 C307 170 314 178 314 190 C314 202 307 210 297 210 C287 210 280 202 280 190 C280 178 287 170 297 170 Z" opacity="0.95"/>
+    <!-- Clinic Cross accent badge -->
+    <circle cx="370" cy="140" r="50" fill="#10B981" stroke="#FFFFFF" stroke-width="8"/>
+    <path d="M370 115 V165 M345 140 H395" stroke="#FFFFFF" stroke-width="10" stroke-linecap="round"/>
+  </g>
+</svg>
