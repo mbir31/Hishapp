@@ -114,6 +114,12 @@ export const AuditLogModal: React.FC<AuditLogModalProps> = ({ isOpen, onClose, s
             Settlement Reverted
           </span>
         );
+      case 'DATA_IMPORTED':
+        return (
+          <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-violet-100 text-violet-800 border border-violet-200">
+            Data Imported
+          </span>
+        );
       default:
         return (
           <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-slate-100 text-slate-700">
@@ -185,6 +191,7 @@ export const AuditLogModal: React.FC<AuditLogModalProps> = ({ isOpen, onClose, s
               { id: 'ENTRY_EDITED', label: 'Edited' },
               { id: 'ENTRY_DELETED', label: 'Deleted' },
               { id: 'SETTLEMENT_CREATED', label: 'Settlement' },
+              { id: 'DATA_IMPORTED', label: 'Import' },
             ].map((f) => (
               <button
                 key={f.id}

@@ -29,7 +29,7 @@ interface HistoryTabProps {
   entries: PatientEntry[];
   settings: ClinicSettings;
   onEntryUpdated: (entry: PatientEntry) => void;
-  onEntryDeleted: (id: string) => void;
+  onEntryDeleted: (entry: PatientEntry) => void;
   showToast: (title: string, desc?: string, type?: 'success' | 'info' | 'warning' | 'error') => void;
 }
 
@@ -201,8 +201,8 @@ export const HistoryTab: React.FC<HistoryTabProps> = ({
 
     try {
       await deletePatientEntry(entryToDelete.id);
-      onEntryDeleted(entryToDelete.id);
-      showToast('Record Deleted', `Removed visit of ${entryToDelete.patientName}`, 'info');
+      // Pass the full entry up so the app can offer an Undo action
+      onEntryDeleted(entryToDelete);
       setEntryToDelete(null);
     } catch (err: any) {
       showToast('Error', err?.message || 'Failed to delete record', 'error');

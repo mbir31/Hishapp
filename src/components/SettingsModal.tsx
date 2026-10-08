@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useRef, useState } from 'react';
 import {
   X,
   CloudUpload,
@@ -11,13 +11,25 @@ import {
   LogOut,
   RotateCcw,
   FileSpreadsheet,
+  Loader2,
+  AlertTriangle,
+  CheckCircle2,
+  Clock,
 } from 'lucide-react';
 import { ClinicSettings } from '../types';
 import {
   exportAllDataCSV,
   exportAllDataJSON,
+  logAudit,
+  restoreAllData,
   saveSettings,
+  syncAllPatientProfiles,
 } from '../db/indexedDB';
+import {
+  ImportResult,
+  parseCSVFiles,
+  parseJSONBackup,
+} from '../utils/importData';
 import type { BackupStatus } from '../services/backupEngine';
 import { usePWAInstall } from '../hooks/usePWAInstall';
 import { AuditLogModal } from './AuditLogModal';
@@ -33,6 +45,7 @@ interface SettingsModalProps {
   onBackupNow: () => Promise<any>;
   onRestoreFromDrive: () => Promise<any>;
   onToggleAutoBackup: (enabled: boolean) => void;
+  onDataImported?: () => void;
   showToast: (title: string, desc?: string, type?: 'success' | 'info' | 'warning' | 'error') => void;
 }
 
@@ -47,6 +60,7 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
   onBackupNow,
   onRestoreFromDrive,
   onToggleAutoBackup,
+  onDataImported,
   showToast,
 }) => {
   const [clinicName, setClinicName] = useState<string>(settings.clinicName || 'Yashfin Dental Care');
@@ -57,6 +71,12 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
   const [isSaving, setIsSaving] = useState<boolean>(false);
   const [isAuditModalOpen, setIsAuditModalOpen] = useState<boolean>(false);
   const [showIOSPrompt, setShowIOSPrompt] = useState<boolean>(false);
+
+  // File import state (restore from JSON / CSV backup files)
+  const [importConfirm, setImportConfirm] = useState<ImportResult | null>(null);
+  const [isImporting, setIsImporting] = useState<boolean>(false);
+  const jsonFileRef = useRef<HTMLInputElement>(null);
+  const csvFileRef = useRef<HTMLInputElement>(null);
 
   const { isInstallable, isInstalled, isIOS, install } = usePWAInstall();
 
@@ -167,6 +187,105 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
     }
   };
 
+  // ── File Import (restore from JSON / CSV backup) ─────────────────
+
+  const handleImportFiles = async (files: FileList | null, kind: 'json' | 'csv') => {
+    if (!files || files.length === 0) return;
+
+    try {
+      if (kind === 'json') {
+        const text = await files[0].text();
+        const result = parseJSONBackup(text, files[0].name);
+        if (result.patientEntries.length === 0 && result.settlements.length === 0) {
+          showToast('Nothing to Import', 'The selected JSON file has no patient entries or settlements', 'warning');
+          return;
+        }
+        setImportConfirm(result);
+      } else {
+        const texts = await Promise.all(
+          Array.from(files).map(async (f) => ({ name: f.name, text: await f.text() }))
+        );
+        const result = parseCSVFiles(texts);
+        if (result.patientEntries.length === 0) {
+          showToast(
+            'Nothing to Import',
+            'No valid patient entries found in the selected CSV file(s)',
+            'warning'
+          );
+          return;
+        }
+        setImportConfirm(result);
+      }
+    } catch (err: any) {
+      showToast('Import Failed', err?.message || 'Could not read the selected file', 'error');
+    } finally {
+      // Reset the input so the same file can be selected again
+      if (kind === 'json' && jsonFileRef.current) jsonFileRef.current.value = '';
+      if (kind === 'csv' && csvFileRef.current) csvFileRef.current.value = '';
+    }
+  };
+
+  const handleConfirmImport = async () => {
+    if (!importConfirm) return;
+
+    try {
+      setIsImporting(true);
+
+      // Safety net: download a snapshot of the CURRENT data before replacing it
+      try {
+        const json = await exportAllDataJSON();
+        const dateStr = new Date().toISOString().split('T')[0];
+        downloadFile(
+          json,
+          `dental_income_tracker_before_import_${dateStr}.json`,
+          'application/json'
+        );
+      } catch (backupErr) {
+        console.warn('Pre-import safety backup notice:', backupErr);
+      }
+
+      await restoreAllData({
+        patientEntries: importConfirm.patientEntries,
+        settlements: importConfirm.settlements,
+        settings: importConfirm.settings,
+      });
+      // Rebuild patient profiles from the imported entries
+      await syncAllPatientProfiles();
+      await logAudit({
+        action: 'DATA_IMPORTED',
+        targetId: 'full_restore',
+        targetType: 'patient_entry',
+        details: `Imported ${importConfirm.patientEntries.length} visits and ${importConfirm.settlements.length} settlements from file (${importConfirm.source})${importConfirm.skippedRows > 0 ? ` — ${importConfirm.skippedRows} invalid rows skipped` : ''}. Previous device data was replaced.`,
+      });
+
+      showToast(
+        'Import Complete',
+        `Restored ${importConfirm.patientEntries.length} visits and ${importConfirm.settlements.length} settlements from ${importConfirm.source}`,
+        'success'
+      );
+      setImportConfirm(null);
+      onDataImported?.();
+    } catch (err: any) {
+      showToast('Import Failed', err?.message || 'Could not import the selected file', 'error');
+    } finally {
+      setIsImporting(false);
+    }
+  };
+
+  // Human-friendly timestamp for the backup status strip
+  const formatBackupTime = (ts: number): string =>
+    new Date(ts).toLocaleString(undefined, {
+      day: 'numeric',
+      month: 'short',
+      year: 'numeric',
+      hour: 'numeric',
+      minute: '2-digit',
+    });
+
+  // Persisted snapshot timestamp is the source of truth; engine value as fallback
+  const lastBackupTs = settings.lastDriveSnapshotTimestamp ?? backup.lastBackupAt ?? null;
+  const isSyncing = backup.phase === 'syncing';
+
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/40 backdrop-blur-sm animate-in fade-in overflow-y-auto">
       <div className="ios-glass bg-white/95 rounded-3xl p-6 w-full max-w-xl shadow-2xl space-y-6 my-auto">
@@ -220,6 +339,68 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
                 : 'Backup Off'}
             </span>
           </div>
+
+          {/* Cloud backup status strip: last successful backup + live progress */}
+          {backup.isConfigured && (
+            <div className="space-y-1.5">
+              <div className="flex items-center justify-between gap-2 p-2.5 rounded-xl bg-white/80 border border-white shadow-2xs">
+                <div className="flex items-center gap-2 min-w-0">
+                  {isSyncing ? (
+                    <Loader2 className="w-3.5 h-3.5 text-indigo-600 animate-spin shrink-0" />
+                  ) : backup.phase === 'error' ? (
+                    <AlertTriangle className="w-3.5 h-3.5 text-rose-600 shrink-0" />
+                  ) : (
+                    <CheckCircle2 className="w-3.5 h-3.5 text-emerald-600 shrink-0" />
+                  )}
+                  <div className="min-w-0">
+                    <p className="text-[11px] font-bold text-slate-900 flex items-center gap-1">
+                      <Clock className="w-3 h-3 text-slate-400" />
+                      Last successful backup
+                    </p>
+                    <p className="text-[10.5px] text-slate-500 truncate">
+                      {isSyncing
+                        ? 'Backing up to Google Drive…'
+                        : lastBackupTs
+                        ? formatBackupTime(lastBackupTs)
+                        : 'No cloud backup yet — tap "Backup to Drive Now" below'}
+                    </p>
+                  </div>
+                </div>
+                <span
+                  className={`px-2 py-0.5 rounded-full text-[10px] font-bold shrink-0 ${
+                    isSyncing
+                      ? 'bg-indigo-100 text-indigo-800'
+                      : backup.phase === 'error'
+                      ? 'bg-rose-100 text-rose-800'
+                      : backup.pendingChanges
+                      ? 'bg-sky-100 text-sky-800'
+                      : 'bg-emerald-100 text-emerald-800'
+                  }`}
+                >
+                  {isSyncing
+                    ? 'Syncing…'
+                    : backup.phase === 'error'
+                    ? 'Backup Error'
+                    : backup.pendingChanges
+                    ? 'Changes Pending'
+                    : 'Up to Date'}
+                </span>
+              </div>
+
+              {/* Indeterminate progress bar while a backup is running */}
+              {isSyncing && (
+                <div className="h-1 w-full rounded-full bg-slate-100 overflow-hidden">
+                  <div className="h-full w-1/3 rounded-full bg-indigo-500 animate-pulse" />
+                </div>
+              )}
+
+              {backup.phase === 'error' && backup.error && (
+                <p className="text-[10.5px] text-rose-700 bg-rose-50 border border-rose-200 rounded-lg px-2.5 py-1.5">
+                  {backup.error}
+                </p>
+              )}
+            </div>
+          )}
 
           {!backup.isConfigured ? (
             <p className="text-xs text-slate-600 leading-relaxed">
@@ -569,6 +750,91 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
               </button>
             </div>
           </div>
+
+          {/* Restore from File (JSON / CSV import) */}
+          <div>
+            <span className="text-[11px] font-bold text-slate-700 block mb-1">
+              Restore from File (Import)
+            </span>
+            <p className="text-[10.5px] text-slate-500 mb-2 leading-relaxed">
+              Replace this device's data with a backup file (e.g. on a new phone). Your current
+              data is downloaded as a safety copy automatically before anything is replaced.
+            </p>
+            <div className="grid grid-cols-2 gap-2">
+              <label className="px-3 py-2 rounded-xl bg-indigo-50 hover:bg-indigo-100 border border-indigo-200 text-indigo-700 text-xs font-semibold flex items-center justify-center gap-1.5 transition active:scale-95 cursor-pointer">
+                <Upload className="w-3.5 h-3.5" />
+                <span>Import JSON Backup</span>
+                <input
+                  ref={jsonFileRef}
+                  type="file"
+                  accept=".json,application/json"
+                  onChange={(e) => handleImportFiles(e.target.files, 'json')}
+                  className="hidden"
+                />
+              </label>
+              <label className="px-3 py-2 rounded-xl bg-emerald-50 hover:bg-emerald-100 border border-emerald-200 text-emerald-700 text-xs font-semibold flex items-center justify-center gap-1.5 transition active:scale-95 cursor-pointer">
+                <Upload className="w-3.5 h-3.5" />
+                <span>Import CSV Files</span>
+                <input
+                  ref={csvFileRef}
+                  type="file"
+                  accept=".csv,text/csv"
+                  multiple
+                  onChange={(e) => handleImportFiles(e.target.files, 'csv')}
+                  className="hidden"
+                />
+              </label>
+            </div>
+            <p className="text-[10px] text-slate-400 mt-1.5">
+              CSV import: select the exported Patient_Entries CSV (and optionally the Settlements
+              CSV) together.
+            </p>
+          </div>
+
+          {/* Import Confirmation Panel (shown after a file is parsed) */}
+          {importConfirm && (
+            <div className="p-3.5 rounded-2xl bg-rose-50 border border-rose-200 space-y-2.5 animate-in fade-in">
+              <div className="flex items-start gap-2">
+                <AlertTriangle className="w-4 h-4 text-rose-600 shrink-0 mt-0.5" />
+                <div className="text-[11px] leading-relaxed">
+                  <p className="font-bold text-rose-900">Replace all data on this device?</p>
+                  <p className="text-rose-800">
+                    The file <strong>{importConfirm.source}</strong> contains{' '}
+                    <strong>{importConfirm.patientEntries.length} visits</strong> and{' '}
+                    <strong>{importConfirm.settlements.length} settlements</strong>
+                    {importConfirm.skippedRows > 0
+                      ? ` (${importConfirm.skippedRows} invalid rows skipped)`
+                      : ''}
+                    . Current records will be replaced. A safety backup of the current data
+                    downloads first.
+                  </p>
+                </div>
+              </div>
+              <div className="flex items-center gap-2">
+                <button
+                  type="button"
+                  onClick={() => setImportConfirm(null)}
+                  disabled={isImporting}
+                  className="flex-1 py-2 rounded-xl bg-white border border-slate-300 text-slate-700 text-xs font-semibold hover:bg-slate-50 transition disabled:opacity-60"
+                >
+                  Cancel
+                </button>
+                <button
+                  type="button"
+                  onClick={handleConfirmImport}
+                  disabled={isImporting}
+                  className="flex-1 py-2 rounded-xl bg-rose-600 hover:bg-rose-700 text-white text-xs font-bold transition flex items-center justify-center gap-1.5 disabled:opacity-70"
+                >
+                  {isImporting ? (
+                    <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                  ) : (
+                    <Upload className="w-3.5 h-3.5" />
+                  )}
+                  <span>{isImporting ? 'Importing…' : 'Import & Replace'}</span>
+                </button>
+              </div>
+            </div>
+          )}
         </div>
 
         {/* Section 3: Progressive Web App Install */}

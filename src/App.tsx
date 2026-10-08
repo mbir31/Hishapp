@@ -1,10 +1,11 @@
 import React, { useState, useEffect, useCallback, useRef } from 'react';
-import { ClinicSettings, PatientEntry, Settlement, TabType, ToastMessage } from './types';
+import { ClinicSettings, PatientEntry, Settlement, TabType, ToastAction, ToastMessage } from './types';
 import {
   DEFAULT_SETTINGS,
   getAllPatientEntries,
   getAllSettlements,
   getSettings,
+  savePatientEntry,
   saveSettings,
   seedDemoDataIfEmpty,
 } from './db/indexedDB';
@@ -45,15 +46,23 @@ export default function App() {
 
   const engineUnsubscribeRef = useRef<(() => void) | null>(null);
 
-  // Toast dispatch helper
+  // Toast dispatch helper (supports an optional action button + custom duration)
   const showToast = useCallback(
-    (title: string, desc?: string, type: 'success' | 'info' | 'warning' | 'error' = 'info') => {
+    (
+      title: string,
+      desc?: string,
+      type: 'success' | 'info' | 'warning' | 'error' = 'info',
+      options?: { action?: ToastAction; duration?: number }
+    ) => {
       const id = `toast-${Date.now()}-${Math.random().toString(36).substring(2, 6)}`;
-      setToasts((prev) => [...prev, { id, title, description: desc, type }]);
+      setToasts((prev) => [
+        ...prev,
+        { id, title, description: desc, type, action: options?.action, duration: options?.duration },
+      ]);
 
       setTimeout(() => {
         setToasts((prev) => prev.filter((t) => t.id !== id));
-      }, 4000);
+      }, options?.duration ?? 4000);
     },
     []
   );
@@ -165,9 +174,38 @@ export default function App() {
     backupEngine.onDataChanged();
   };
 
-  const handleEntryDeleted = (id: string) => {
-    setEntries((prev) => prev.filter((e) => e.id !== id));
+  const handleEntryDeleted = (deletedEntry: PatientEntry) => {
+    setEntries((prev) => prev.filter((e) => e.id !== deletedEntry.id));
     backupEngine.onDataChanged();
+
+    // Offer an Undo action so an accidental delete can be reversed
+    showToast(
+      'Record Deleted',
+      `Removed visit of ${deletedEntry.patientName} (${deletedEntry.date})`,
+      'info',
+      {
+        duration: 10000,
+        action: {
+          label: 'Undo',
+          onClick: () => {
+            void (async () => {
+              try {
+                await savePatientEntry(deletedEntry);
+                setEntries((prev) => [deletedEntry, ...prev]);
+                backupEngine.onDataChanged();
+                showToast(
+                  'Record Restored',
+                  `Visit of ${deletedEntry.patientName} is back in the ledger`,
+                  'success'
+                );
+              } catch (err: any) {
+                showToast('Undo Failed', err?.message || 'Could not restore the record', 'error');
+              }
+            })();
+          },
+        },
+      }
+    );
   };
 
   const handleSettingsSaved = (newSettings: ClinicSettings) => {
@@ -237,6 +275,7 @@ export default function App() {
             settings={settings}
             existingEntries={entries}
             onEntrySaved={handleEntrySaved}
+            onEntryUpdated={handleEntryUpdated}
             onUpdateSettings={handleSettingsSaved}
             showToast={showToast}
           />
@@ -288,6 +327,7 @@ export default function App() {
             handleSettingsSaved(updated);
             if (enabled) backupEngine.onDataChanged();
           }}
+          onDataImported={() => void refreshData()}
           showToast={showToast}
         />
       )}

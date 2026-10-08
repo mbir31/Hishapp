@@ -38,7 +38,13 @@ export interface AmountPreset {
 export interface AuditLogEntry {
   id: string;
   timestamp: number;
-  action: 'ENTRY_CREATED' | 'ENTRY_EDITED' | 'ENTRY_DELETED' | 'SETTLEMENT_CREATED' | 'SETTLEMENT_DELETED';
+  action:
+    | 'ENTRY_CREATED'
+    | 'ENTRY_EDITED'
+    | 'ENTRY_DELETED'
+    | 'SETTLEMENT_CREATED'
+    | 'SETTLEMENT_DELETED'
+    | 'DATA_IMPORTED';
   targetId: string;
   targetType: 'patient_entry' | 'settlement';
   details: string;
@@ -85,9 +91,16 @@ export interface ProcedurePreset {
   defaultPrice?: number;
 }
 
+export interface ToastAction {
+  label: string;
+  onClick: () => void;
+}
+
 export interface ToastMessage {
   id: string;
   title: string;
   description?: string;
   type: 'success' | 'info' | 'warning' | 'error';
+  action?: ToastAction;
+  duration?: number; // ms before auto-dismiss (default 4000)
 }
