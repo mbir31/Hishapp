@@ -396,7 +396,7 @@ export const EntryTab: React.FC<EntryTabProps> = ({
                   onClick={() => handleSetQuickDate(0)}
                   className={`px-1.5 py-0.5 rounded-md border font-medium transition ${
                     date === todayStr
-                      ? 'bg-indigo-600 text-white border-indigo-600'
+                      ? 'btn-gradient border-transparent text-white'
                       : 'bg-white text-slate-600 border-slate-200 hover:bg-slate-50'
                   }`}
                 >
@@ -435,7 +435,7 @@ export const EntryTab: React.FC<EntryTabProps> = ({
               )}
             </div>
 
-            <div className="relative">
+            <div className="relative glow-field">
               <input
                 ref={inputRef}
                 type="text"
@@ -453,7 +453,7 @@ export const EntryTab: React.FC<EntryTabProps> = ({
                     setShowSuggestions(true);
                   }
                 }}
-                className="w-full px-3 py-1.5 rounded-xl bg-white/70 border border-white/70 focus:border-indigo-500 text-slate-800 text-xs font-medium transition outline-none placeholder:text-slate-400"
+                className="glow-input w-full px-3 py-2 rounded-xl border border-white/80 focus:border-indigo-400/80 text-slate-900 text-[13px] font-semibold outline-none placeholder:text-slate-400 placeholder:font-medium"
                 required
                 autoFocus
                 autoComplete="off"
@@ -591,7 +591,7 @@ export const EntryTab: React.FC<EntryTabProps> = ({
                       onClick={() => handleSelectProcedureChip(chip)}
                       className={`px-2 py-0.5 rounded-lg text-[10.5px] font-medium transition active:scale-95 ${
                         isSelected
-                          ? 'bg-indigo-600 text-white shadow-2xs'
+                          ? 'btn-gradient text-white'
                           : 'bg-white/70 text-slate-600 border border-white/70 hover:bg-white/90'
                       }`}
                     >
@@ -622,8 +622,8 @@ export const EntryTab: React.FC<EntryTabProps> = ({
             </button>
           </div>
 
-          <div className="relative">
-            <span className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400 font-bold text-sm">
+          <div className="relative glow-field">
+            <span className="absolute left-3 top-1/2 -translate-y-1/2 z-[3] text-indigo-500/80 font-bold text-sm pointer-events-none">
               {currency}
             </span>
             <input
@@ -631,7 +631,7 @@ export const EntryTab: React.FC<EntryTabProps> = ({
               placeholder="0"
               value={receivedAmount}
               onChange={(e) => setReceivedAmount(e.target.value)}
-              className="w-full pl-8 pr-3 py-1.5 rounded-xl bg-white/70 border border-white/70 focus:border-indigo-500 text-slate-900 text-base font-bold tracking-tight transition outline-none"
+              className="glow-input w-full pl-8 pr-3 py-2 rounded-xl border border-white/80 focus:border-indigo-400/80 text-slate-900 text-base font-bold tracking-tight outline-none"
               min="0"
               step="any"
               required
@@ -652,7 +652,7 @@ export const EntryTab: React.FC<EntryTabProps> = ({
                     onClick={() => handleSelectAmountPreset(preset)}
                     className={`px-2 py-0.5 rounded-lg text-[10.5px] font-bold flex items-center gap-1 border active:scale-95 transition ${
                       isSelected
-                        ? 'bg-emerald-600 text-white border-emerald-600 shadow-2xs'
+                        ? 'btn-gradient btn-gradient--emerald border-transparent text-white'
                         : 'bg-emerald-50 text-emerald-700 border-emerald-200 hover:bg-emerald-100'
                     }`}
                   >
@@ -717,7 +717,7 @@ export const EntryTab: React.FC<EntryTabProps> = ({
               </button>
               <button
                 type="submit"
-                className="flex-1 py-1.5 rounded-lg bg-amber-600 hover:bg-amber-700 text-white text-[11px] font-bold transition active:scale-95"
+                className="btn-gradient btn-gradient--amber flex-1 py-1.5 rounded-lg text-white text-[11px] font-bold"
               >
                 Save Anyway
               </button>
@@ -729,7 +729,7 @@ export const EntryTab: React.FC<EntryTabProps> = ({
         <button
           type="submit"
           disabled={isSubmitting}
-          className="w-full py-2.5 px-4 rounded-xl bg-gradient-to-r from-indigo-600 to-sky-600 hover:from-indigo-700 hover:to-sky-700 active:scale-[0.98] text-white font-bold text-sm shadow-md shadow-indigo-500/25 flex items-center justify-center gap-1.5 transition-all duration-150 disabled:opacity-60 disabled:cursor-not-allowed"
+          className="btn-gradient w-full py-2.5 px-4 rounded-xl text-white font-bold text-sm flex items-center justify-center gap-1.5 disabled:opacity-60 disabled:cursor-not-allowed"
         >
           <CheckCircle2 className="w-4 h-4" />
           <span>{isSubmitting ? 'Saving to Ledger...' : `Save Record (${shareRate}% Share)`}</span>
@@ -943,7 +943,7 @@ export const EntryTab: React.FC<EntryTabProps> = ({
                 </button>
                 <button
                   type="submit"
-                  className="px-4 py-2 rounded-xl bg-indigo-600 hover:bg-indigo-700 text-white font-bold transition flex items-center gap-1.5"
+                  className="btn-gradient px-4 py-2 rounded-xl text-white font-bold flex items-center gap-1.5"
                 >
                   <Save className="w-3.5 h-3.5" />
                   <span>Update Record</span>

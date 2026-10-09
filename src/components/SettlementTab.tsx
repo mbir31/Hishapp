@@ -251,7 +251,7 @@ export const SettlementTab: React.FC<SettlementTabProps> = ({
         <button
           type="button"
           onClick={() => setIsMonthlyModalOpen(true)}
-          className="self-start sm:self-auto px-4 py-2.5 rounded-2xl bg-indigo-600 hover:bg-indigo-700 active:scale-95 text-white text-xs font-bold flex items-center gap-2 shadow-md shadow-indigo-600/20 transition-all shrink-0"
+          className="btn-gradient btn-gradient--sky self-start sm:self-auto px-4 py-2.5 rounded-2xl text-white text-xs font-bold flex items-center gap-2 shrink-0"
         >
           <Download className="w-4 h-4" />
           <span>Export Monthly PDF</span>
@@ -453,7 +453,7 @@ export const SettlementTab: React.FC<SettlementTabProps> = ({
         <button
           type="submit"
           disabled={isSubmitting || (eligibleEntriesInRange.length === 0 && previousDue === 0)}
-          className="w-full py-3.5 px-6 rounded-2xl bg-indigo-600 hover:bg-indigo-700 active:scale-[0.98] text-white font-bold text-sm sm:text-base shadow-lg shadow-indigo-600/25 flex items-center justify-center gap-2 transition-all duration-150 disabled:opacity-50 disabled:cursor-not-allowed"
+          className="btn-gradient w-full py-3.5 px-6 rounded-2xl text-white font-bold text-sm sm:text-base flex items-center justify-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed"
         >
           <CheckCircle2 className="w-5 h-5" />
           <span>{isSubmitting ? 'Finalizing Batch...' : 'Confirm Settlement'}</span>

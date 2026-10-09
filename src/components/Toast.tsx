@@ -42,7 +42,7 @@ export const ToastContainer: React.FC<ToastProps> = ({ toasts, onDismiss }) => {
                   onDismiss(toast.id);
                   toast.action?.onClick();
                 }}
-                className="shrink-0 self-center px-2.5 py-1 rounded-lg bg-indigo-600 hover:bg-indigo-700 text-white text-[11px] font-bold transition active:scale-95"
+                className="btn-gradient shrink-0 self-center px-2.5 py-1 rounded-lg text-white text-[11px] font-bold"
               >
                 {toast.action.label}
               </button>

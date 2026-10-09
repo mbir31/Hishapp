@@ -562,7 +562,7 @@ export const DashboardTab: React.FC<DashboardTabProps> = ({
                 <p className="text-xs text-slate-500">Latest entries & settlement flags</p>
               </div>
               <button
-                onClick={() => onNavigateTab('history')}
+                onClick={() => onNavigateTab('records')}
                 className="text-xs font-semibold text-indigo-600 hover:text-indigo-800 flex items-center gap-0.5 active:scale-95 transition"
               >
                 <span>View All</span>

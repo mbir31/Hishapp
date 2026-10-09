@@ -94,9 +94,9 @@ export const Header: React.FC<HeaderProps> = ({
   onOpenSettings,
 }) => {
   const avatar = backup.user?.photoURL || settings.doctorPhoto || '';
-  // No account is pre-loaded: the header only shows a name once the doctor has
-  // signed in with their own Gmail (or typed one in Settings).
-  const displayName = backup.user?.name || settings.doctorName?.trim() || '';
+  // The header always shows the Doctor Name saved in Settings. The signed-in
+  // Gmail account name is only a fallback for when that field is still empty.
+  const displayName = settings.doctorName?.trim() || backup.user?.name?.trim() || '';
   const avatarAlt = displayName;
   const [avatarFailed, setAvatarFailed] = useState(false);
 
@@ -111,14 +111,15 @@ export const Header: React.FC<HeaderProps> = ({
       <div className="max-w-4xl mx-auto flex items-center justify-between gap-3 rounded-[22px] ios-glass-nav px-3 py-0.5 pointer-events-auto">
         {/* Left: Clinic Logo + Doctor / Clinic Info */}
         <div className="flex items-center gap-3 min-w-0">
-          {/* Logo container with subtle glass ring border */}
-          <div className="relative shrink-0 w-10 h-10 rounded-2xl bg-gradient-to-tr from-indigo-600 via-sky-500 to-emerald-400 p-[1.5px] shadow-sm shadow-indigo-500/20">
-            <div className="w-full h-full rounded-[14px] bg-white/95 backdrop-blur-md flex items-center justify-center overflow-hidden p-0.5">
+          {/* Circular logo container (matches the round account avatar) with
+              an animated gradient ring border */}
+          <div className="relative shrink-0 w-9 h-9 sm:w-10 sm:h-10 rounded-full logo-ring p-[1.5px] shadow-sm shadow-indigo-500/20">
+            <div className="w-full h-full rounded-full bg-white/95 backdrop-blur-md flex items-center justify-center overflow-hidden p-0.5">
               {settings.clinicLogo ? (
                 <img
                   src={settings.clinicLogo}
                   alt={settings.clinicName || 'Clinic Logo'}
-                  className="w-full h-full object-contain rounded-[12px]"
+                  className="w-full h-full object-contain rounded-full"
                   onError={(e) => {
                     (e.currentTarget as HTMLElement).style.display = 'none';
                   }}
@@ -141,13 +142,16 @@ export const Header: React.FC<HeaderProps> = ({
             </div>
           </div>
 
-          {/* Clinic & Doctor Name */}
+          {/* Clinic name on top, Doctor Name (from Settings) right below it */}
           <div className="min-w-0">
             <p className="text-[10px] font-bold tracking-wider uppercase text-indigo-600/90 truncate">
               {settings.clinicName || 'Dental Care Clinic'}
             </p>
             {displayName ? (
-              <h1 className="text-base sm:text-lg font-bold text-slate-900 tracking-tight leading-tight truncate">
+              <h1
+                className="text-base sm:text-lg font-bold text-slate-900 tracking-tight leading-tight truncate"
+                title={displayName}
+              >
                 {displayName}
               </h1>
             ) : (
@@ -155,10 +159,10 @@ export const Header: React.FC<HeaderProps> = ({
                 type="button"
                 onClick={onOpenSettings}
                 className="mt-0.5 inline-flex items-center gap-1 px-2 py-0.5 -ml-2 rounded-full text-[11px] font-bold text-indigo-600 hover:text-indigo-700 hover:bg-indigo-50 active:scale-95 transition"
-                title="Sign in with your Gmail account"
+                title="Open Settings to add the Doctor Name (or sign in with Google)"
               >
                 <LogIn className="w-3 h-3" />
-                <span>Sign in with Google</span>
+                <span>Add Doctor Name</span>
               </button>
             )}
           </div>

@@ -13,11 +13,12 @@ export const BottomNav: React.FC<BottomNavProps> = ({
   onChangeTab,
   pendingCount = 0,
 }) => {
+  // Tab order: Records now sits where Settlement used to be (and vice-versa).
   const navItems: { id: TabType; label: string; icon: React.ElementType; badge?: number }[] = [
     { id: 'dashboard', label: 'Dashboard', icon: LayoutDashboard },
     { id: 'entry', label: 'Entry', icon: PlusCircle },
+    { id: 'records', label: 'Records', icon: History },
     { id: 'settlement', label: 'Settlement', icon: Scale, badge: pendingCount },
-    { id: 'history', label: 'History', icon: History },
   ];
 
   return (

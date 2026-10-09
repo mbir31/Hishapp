@@ -25,7 +25,7 @@ import { PatientHistoryModal } from './PatientHistoryModal';
 import { DeleteConfirmationModal } from './DeleteConfirmationModal';
 import { AuditLogModal } from './AuditLogModal';
 
-interface HistoryTabProps {
+interface RecordsTabProps {
   entries: PatientEntry[];
   settings: ClinicSettings;
   onEntryUpdated: (entry: PatientEntry) => void;
@@ -33,7 +33,7 @@ interface HistoryTabProps {
   showToast: (title: string, desc?: string, type?: 'success' | 'info' | 'warning' | 'error') => void;
 }
 
-export const HistoryTab: React.FC<HistoryTabProps> = ({
+export const RecordsTab: React.FC<RecordsTabProps> = ({
   entries,
   settings,
   onEntryUpdated,
@@ -666,7 +666,7 @@ export const HistoryTab: React.FC<HistoryTabProps> = ({
                 </button>
                 <button
                   type="submit"
-                  className="px-4 py-2 rounded-xl bg-indigo-600 hover:bg-indigo-700 text-white font-bold transition flex items-center gap-1.5"
+                  className="btn-gradient px-4 py-2 rounded-xl text-white font-bold flex items-center gap-1.5"
                 >
                   <Save className="w-3.5 h-3.5" />
                   <span>Update Record</span>

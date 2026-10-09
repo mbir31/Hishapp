@@ -16,11 +16,15 @@ import { BottomNav } from './components/BottomNav';
 import { DashboardTab } from './components/DashboardTab';
 import { EntryTab } from './components/EntryTab';
 import { SettlementTab } from './components/SettlementTab';
-import { HistoryTab } from './components/HistoryTab';
+import { RecordsTab } from './components/RecordsTab';
 import { SettingsModal } from './components/SettingsModal';
 import { SettlementReceiptModal } from './components/SettlementReceiptModal';
 import { ToastContainer } from './components/Toast';
 import { AppBackground } from './components/AppBackground';
+
+/** Left-to-right order of the bottom navigation — drives the slide direction
+ *  of the tab change animation. */
+const TAB_ORDER: TabType[] = ['dashboard', 'entry', 'records', 'settlement'];
 
 const INITIAL_BACKUP_STATUS: BackupStatus = {
   phase: 'signed-out',
@@ -36,6 +40,7 @@ export default function App() {
   const isOnline = useOnlineStatus();
 
   const [activeTab, setActiveTab] = useState<TabType>('dashboard');
+  const [tabDirection, setTabDirection] = useState<'forward' | 'backward'>('forward');
   const [entries, setEntries] = useState<PatientEntry[]>([]);
   const [settlements, setSettlements] = useState<Settlement[]>([]);
   const [settings, setSettings] = useState<ClinicSettings>(DEFAULT_SETTINGS);
@@ -215,6 +220,14 @@ export default function App() {
     backupEngine.onDataChanged();
   };
 
+  // Tab switching keeps track of the travel direction so the panel can slide
+  // in from the matching side (iOS-style page transition).
+  const handleChangeTab = (tab: TabType) => {
+    if (tab === activeTab) return;
+    setTabDirection(TAB_ORDER.indexOf(tab) > TAB_ORDER.indexOf(activeTab) ? 'forward' : 'backward');
+    setActiveTab(tab);
+  };
+
   const pendingCount = entries.filter((e) => e.settlementStatus === 'Pending').length;
 
   if (isLoading) {
@@ -267,54 +280,57 @@ export default function App() {
         </div>
       )}
 
-      {/* Main Content View with Tabs */}
+      {/* Main Content View with Tabs — the keyed wrapper replays the
+          slide/fade transition every time the active tab changes. */}
       <main className="flex-1 w-full max-w-4xl mx-auto px-4 pt-4 pb-36 sm:pt-6 sm:pb-40">
-        {activeTab === 'dashboard' && (
-          <DashboardTab
-            entries={entries}
-            settlements={settlements}
-            settings={settings}
-            onNavigateTab={(tab) => setActiveTab(tab)}
-          />
-        )}
+        <div key={activeTab} className={`tab-panel tab-panel--${tabDirection}`}>
+          {activeTab === 'dashboard' && (
+            <DashboardTab
+              entries={entries}
+              settlements={settlements}
+              settings={settings}
+              onNavigateTab={handleChangeTab}
+            />
+          )}
 
-        {activeTab === 'entry' && (
-          <EntryTab
-            settings={settings}
-            existingEntries={entries}
-            onEntrySaved={handleEntrySaved}
-            onEntryUpdated={handleEntryUpdated}
-            onUpdateSettings={handleSettingsSaved}
-            showToast={showToast}
-          />
-        )}
+          {activeTab === 'entry' && (
+            <EntryTab
+              settings={settings}
+              existingEntries={entries}
+              onEntrySaved={handleEntrySaved}
+              onEntryUpdated={handleEntryUpdated}
+              onUpdateSettings={handleSettingsSaved}
+              showToast={showToast}
+            />
+          )}
 
-        {activeTab === 'settlement' && (
-          <SettlementTab
-            entries={entries}
-            settlements={settlements}
-            settings={settings}
-            onSettlementCompleted={handleSettlementCompleted}
-            onSettlementDeleted={handleSettlementDeleted}
-            showToast={showToast}
-          />
-        )}
+          {activeTab === 'records' && (
+            <RecordsTab
+              entries={entries}
+              settings={settings}
+              onEntryUpdated={handleEntryUpdated}
+              onEntryDeleted={handleEntryDeleted}
+              showToast={showToast}
+            />
+          )}
 
-        {activeTab === 'history' && (
-          <HistoryTab
-            entries={entries}
-            settings={settings}
-            onEntryUpdated={handleEntryUpdated}
-            onEntryDeleted={handleEntryDeleted}
-            showToast={showToast}
-          />
-        )}
+          {activeTab === 'settlement' && (
+            <SettlementTab
+              entries={entries}
+              settlements={settlements}
+              settings={settings}
+              onSettlementCompleted={handleSettlementCompleted}
+              onSettlementDeleted={handleSettlementDeleted}
+              showToast={showToast}
+            />
+          )}
+        </div>
       </main>
 
       {/* Fixed iOS Frosted Bottom Navigation Dock */}
       <BottomNav
         activeTab={activeTab}
-        onChangeTab={setActiveTab}
+        onChangeTab={handleChangeTab}
         pendingCount={pendingCount}
       />
 

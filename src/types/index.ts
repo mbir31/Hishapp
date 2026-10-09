@@ -89,7 +89,7 @@ export interface PatientProfile {
   updatedAt: number;
 }
 
-export type TabType = 'dashboard' | 'entry' | 'settlement' | 'history';
+export type TabType = 'dashboard' | 'entry' | 'records' | 'settlement';
 
 export interface ProcedurePreset {
   name: string;
