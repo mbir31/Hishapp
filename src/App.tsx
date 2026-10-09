@@ -240,7 +240,7 @@ export default function App() {
       {/* Toast Notifications */}
       <ToastContainer toasts={toasts} onDismiss={dismissToast} />
 
-      {/* Fixed Frosted-Glass Header */}
+      {/* Floating frosted-glass header dock */}
       <Header
         settings={settings}
         isOnline={isOnline}
