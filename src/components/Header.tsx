@@ -9,52 +9,74 @@ interface HeaderProps {
   isOnline: boolean;
   backup: BackupStatus;
   onOpenSettings: () => void;
+  /** Tap-to-sync: pushes the current local data to Google Drive right now. */
+  onSyncNow: () => void;
 }
 
-function BackupPill({ backup, isOnline }: { backup: BackupStatus; isOnline: boolean }) {
+function BackupPill({
+  backup,
+  isOnline,
+  onSyncNow,
+  onOpenSettings,
+}: {
+  backup: BackupStatus;
+  isOnline: boolean;
+  onSyncNow: () => void;
+  onOpenSettings: () => void;
+}) {
   const { phase, isConfigured } = backup;
+  const pillBase =
+    'flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-medium transition-all active:scale-95';
 
   if (!isConfigured) {
     return (
-      <div
-        className="hidden sm:flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-medium bg-slate-100 text-slate-500 border border-slate-200"
-        title="Cloud backup not configured — add your Firebase web config in src/config/firebase.ts"
+      <button
+        type="button"
+        onClick={onOpenSettings}
+        className={`${pillBase} hidden sm:flex bg-slate-100 text-slate-500 border border-slate-200 hover:bg-slate-200/70 cursor-pointer`}
+        title="Cloud backup not configured — open Settings to connect Firebase"
       >
         <CloudOff className="w-3.5 h-3.5" />
         <span>Local Only</span>
-      </div>
+      </button>
     );
   }
 
   if (phase === 'syncing') {
     return (
-      <div
-        className="flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-medium bg-indigo-50 text-indigo-700 border border-indigo-200"
+      <button
+        type="button"
+        onClick={onSyncNow}
+        disabled
+        className={`${pillBase} bg-indigo-50 text-indigo-700 border border-indigo-200 disabled:opacity-80 cursor-default`}
         title="Backing up to your Google Drive..."
       >
         <RefreshCw className="w-3.5 h-3.5 animate-spin" />
         <span className="hidden sm:inline">Backing Up...</span>
-      </div>
+      </button>
     );
   }
 
   if (phase === 'error') {
     return (
-      <div
-        className="flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-medium bg-amber-50 text-amber-700 border border-amber-200"
-        title={backup.error || 'Cloud backup issue — open Settings'}
+      <button
+        type="button"
+        onClick={onSyncNow}
+        className={`${pillBase} bg-amber-50 text-amber-700 border border-amber-200 hover:bg-amber-100 cursor-pointer`}
+        title={`${backup.error || 'Cloud backup issue'} — tap to sync again`}
       >
         <ShieldAlert className="w-3.5 h-3.5" />
         <span className="hidden sm:inline">Backup Issue</span>
-      </div>
+      </button>
     );
   }
 
   if (phase === 'signed-out') {
     return (
       <button
-        onClick={() => {}}
-        className="flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-medium bg-slate-100 text-slate-600 border border-slate-200 hover:bg-slate-200/70 active:scale-95 transition-all"
+        type="button"
+        onClick={onOpenSettings}
+        className={`${pillBase} bg-slate-100 text-slate-600 border border-slate-200 hover:bg-slate-200/70 cursor-pointer`}
         title="Sign in from Settings to enable Google Drive cloud backup"
       >
         <CloudOff className="w-3.5 h-3.5 text-slate-400" />
@@ -63,27 +85,29 @@ function BackupPill({ backup, isOnline }: { backup: BackupStatus; isOnline: bool
     );
   }
 
-  // Signed in (idle / synced)
+  // Signed in (idle / synced) — tap any time to force a cloud sync now
   return (
-    <div
-      className={`flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-medium border transition-colors ${
+    <button
+      type="button"
+      onClick={onSyncNow}
+      className={`${pillBase} border cursor-pointer hover:brightness-95 ${
         backup.pendingChanges
-          ? 'bg-sky-500/10 text-sky-700 border-sky-400/30'
-          : 'bg-emerald-500/10 text-emerald-700 border-emerald-500/20'
+          ? 'bg-sky-500/10 text-sky-700 border-sky-400/30 hover:bg-sky-500/20'
+          : 'bg-emerald-500/10 text-emerald-700 border-emerald-500/20 hover:bg-emerald-500/20'
       }`}
       title={
         backup.pendingChanges
-          ? 'Changes queued — backing up to your Google Drive shortly'
+          ? 'Changes queued — tap to back up to your Google Drive now'
           : backup.lastBackupAt
-          ? `Backed up to your Google Drive on ${new Date(backup.lastBackupAt).toLocaleString()}`
-          : 'Signed in — your data is protected'
+          ? `Backed up to your Google Drive on ${new Date(backup.lastBackupAt).toLocaleString()} — tap to sync again`
+          : 'Signed in — tap to back up to Google Drive now'
       }
     >
       <Cloud className={`w-3.5 h-3.5 ${backup.pendingChanges ? 'text-sky-600' : 'text-emerald-600'}`} />
       <span className="hidden sm:inline">
         {backup.pendingChanges ? 'Backup Queued' : backup.lastBackupAt ? 'Drive Backed Up' : 'Backup Ready'}
       </span>
-    </div>
+    </button>
   );
 }
 
@@ -92,12 +116,17 @@ export const Header: React.FC<HeaderProps> = ({
   isOnline,
   backup,
   onOpenSettings,
+  onSyncNow,
 }) => {
-  const avatar = backup.user?.photoURL || settings.doctorPhoto || '';
+  // The account avatar is ONLY the signed-in Gmail account's photo. When no
+  // account is signed in no profile photo is shown at all — even if an older
+  // build cached one in the local settings database (that residue is also
+  // scrubbed on load in backupEngine).
+  const avatar = backup.user?.photoURL || '';
   // The header always shows the Doctor Name saved in Settings. The signed-in
   // Gmail account name is only a fallback for when that field is still empty.
   const displayName = settings.doctorName?.trim() || backup.user?.name?.trim() || '';
-  const avatarAlt = displayName;
+  const avatarAlt = backup.user?.name?.trim() || displayName;
   const [avatarFailed, setAvatarFailed] = useState(false);
 
   useEffect(() => {
@@ -173,8 +202,13 @@ export const Header: React.FC<HeaderProps> = ({
           {/* Dedicated one-click PWA install button */}
           <InstallAppButton />
 
-          {/* Google Drive Cloud Backup Status */}
-          <BackupPill backup={backup} isOnline={isOnline} />
+          {/* Google Drive Cloud Backup Status — tap to sync now */}
+          <BackupPill
+            backup={backup}
+            isOnline={isOnline}
+            onSyncNow={onSyncNow}
+            onOpenSettings={onOpenSettings}
+          />
 
           {/* Live Online/Offline Status Pill */}
           <div
@@ -193,27 +227,30 @@ export const Header: React.FC<HeaderProps> = ({
             <span>{isOnline ? 'Online' : 'Offline'}</span>
           </div>
 
-          {/* Settings / Account Avatar Button */}
-          <button
-            onClick={onOpenSettings}
-            className="w-9 h-9 sm:w-10 sm:h-10 rounded-full ios-glass border border-white/80 shadow-sm flex items-center justify-center text-slate-700 hover:text-indigo-600 hover:bg-white/90 active:scale-90 transition-all duration-150 overflow-hidden"
-            aria-label="Settings and Profile"
-          >
-            {avatar && !avatarFailed ? (
-              <img
-                src={avatar}
-                alt={avatarAlt}
-                className="w-full h-full object-cover"
-                onError={() => setAvatarFailed(true)}
-              />
-            ) : !avatarFailed && avatarAlt ? (
-              <span className="w-full h-full flex items-center justify-center bg-gradient-to-tr from-indigo-600 to-sky-500 text-white text-xs font-bold">
-                {avatarAlt.charAt(0).toUpperCase()}
-              </span>
-            ) : (
-              <Settings className="w-5 h-5 text-slate-600 hover:text-indigo-600" />
-            )}
-          </button>
+          {/* Settings / Account Avatar Button — wrapped in the exact same
+              animated logo-ring frame as the clinic logo on the left */}
+          <div className="relative shrink-0 w-9 h-9 sm:w-10 sm:h-10 rounded-full logo-ring p-[1.5px] shadow-sm shadow-indigo-500/20">
+            <button
+              onClick={onOpenSettings}
+              className="w-full h-full rounded-full bg-white/95 backdrop-blur-md flex items-center justify-center overflow-hidden p-0.5 text-slate-700 hover:text-indigo-600 active:scale-90 transition-all duration-150"
+              aria-label="Settings and Profile"
+            >
+              {backup.user && avatar && !avatarFailed ? (
+                <img
+                  src={avatar}
+                  alt={avatarAlt}
+                  className="w-full h-full object-cover rounded-full"
+                  onError={() => setAvatarFailed(true)}
+                />
+              ) : backup.user && !avatarFailed && avatarAlt ? (
+                <span className="w-full h-full flex items-center justify-center bg-gradient-to-tr from-indigo-600 to-sky-500 text-white text-xs font-bold rounded-full">
+                  {avatarAlt.charAt(0).toUpperCase()}
+                </span>
+              ) : (
+                <Settings className="w-5 h-5 text-slate-600" />
+              )}
+            </button>
+          </div>
         </div>
       </div>
     </header>

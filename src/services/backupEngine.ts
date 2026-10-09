@@ -95,6 +95,10 @@ class BackupEngine {
         this.emit();
         await this.handleSignedIn(previousUser);
       } else {
+        // No account signed in (fresh load signed out, or the session ended):
+        // scrub any residual account identity out of the local settings cache
+        // so a previously signed-in Gmail photo is never shown again.
+        await this.scrubResidualIdentity();
         this.recomputePhase();
         this.emit();
       }
@@ -116,6 +120,27 @@ class BackupEngine {
     }
     this.emit();
   };
+
+  /**
+   * Removes any leftover account identity (photo / email / owner uid) from
+   * the local settings database while NO account is signed in. Older builds
+   * could leave a previously signed-in account's profile photo cached here,
+   * which then kept showing in the header across refreshes. A Doctor Name the
+   * doctor typed in Settings is intentionally kept — only account-owned
+   * identity fields are cleared. The dataset-owner tag (dataOwnerUid) is
+   * device bookkeeping and is left untouched.
+   */
+  private async scrubResidualIdentity(): Promise<void> {
+    try {
+      const settings = await getSettings();
+      if (settings.doctorPhoto || settings.doctorEmail || settings.ownerUid) {
+        await saveSettings({ doctorPhoto: '', doctorEmail: '', ownerUid: null });
+        this.onRestoredCb?.(); // let the app refresh the profile UI
+      }
+    } catch (err) {
+      console.warn('Could not scrub residual profile identity:', err);
+    }
+  }
 
   private async handleSignedIn(previousUser: HisappUser | null): Promise<void> {
     try {
