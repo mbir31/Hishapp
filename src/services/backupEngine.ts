@@ -7,13 +7,20 @@
  *      straight into IndexedDB (durable browser database).
  *   2. CLOUD: after every local change this engine schedules a debounced
  *      Google Drive backup to the signed-in user's OWN Drive, plus a
- *      weekly safety snapshot. When a user signs in on an empty device,
- *      their latest Drive backup is restored automatically.
+ *      weekly safety snapshot.
+ *
+ * SIGN-IN IS CLOUD-FIRST: whenever an account signs in, its latest Google
+ * Drive backup is pulled and takes priority over this device's local cache
+ * (see cloudSync.ts). A different Gmail account signing in on the same
+ * device therefore gets ITS OWN cloud data — the previous account's cached
+ * records are never shown to it nor backed up into it.
  *
  * UI subscribes to `status` to show live backup state.
  */
 import {
+  clearAllPatientData,
   getAllPatientEntries,
+  getAllSettlements,
   getSettings,
   restoreAllData,
   saveSettings,
@@ -31,7 +38,10 @@ import {
   checkAndRunWeeklyAutoBackup,
   createDriveBackup,
   downloadLatestDriveBackup,
+  type DriveBackupMeta,
+  type DriveBackupPayload,
 } from './driveBackup';
+import { decideSignInSync } from './cloudSync';
 import { syncSheetsLedger } from './sheetsLedger';
 import { signOutIdentityPatch } from './identity';
 
@@ -136,23 +146,47 @@ class BackupEngine {
         this.onRestoredCb?.();
       }
 
-      // New device / wiped browser: local DB is empty → auto-restore the
-      // user's most recent Google Drive backup so no data is ever lost.
-      const entries = await getAllPatientEntries();
-      if (entries.length === 0) {
-        const token = getSilentGoogleToken();
-        if (token) {
+      // ── Cloud-first sync: the signing-in account's Google Drive backup
+      // takes priority over this device's local browser cache ────────────
+      // The latest backup is pulled FIRST and reconciled with the local
+      // cache (see reconcileCloudWithLocal). When a different Gmail account
+      // signs in on this device (logout → login as another account), its own
+      // Drive backup replaces the previous account's cached records — the
+      // local cache never rules over the cloud backup.
+      let cloudSyncFailed = false;
+      const token = getSilentGoogleToken();
+      if (token) {
+        try {
           const latest = await downloadLatestDriveBackup(token);
-          if (latest && (latest.payload.patientEntries?.length || latest.payload.settlements?.length)) {
-            await restoreAllData(latest.payload);
-            this.onRestoredCb?.();
-            this.onToastCb?.(
-              'Data Restored from Google Drive',
-              `Loaded "${latest.meta.name}" — your records are back.`,
-              'success'
-            );
+          await this.reconcileCloudWithLocal(latest, previousUser);
+        } catch (syncErr: any) {
+          cloudSyncFailed = true;
+          console.warn('Sign-in cloud sync notice:', syncErr);
+          if (syncErr?.message !== 'SESSION_EXPIRED') {
+            this.error = syncErr?.message || 'Cloud sync failed';
+            this.recomputePhase();
+            this.emit();
           }
         }
+      }
+
+      // Safety guard: never upload the local cache into a DIFFERENT account's
+      // Drive. If an account switch was detected but the cloud sync could not
+      // finish, the cache still holds the previous account's records — hold
+      // the weekly/pending pushes until the next successful sync.
+      const postSyncSettings = await getSettings();
+      const cacheStillBelongsToPreviousAccount =
+        !!postSyncSettings.dataOwnerUid && postSyncSettings.dataOwnerUid !== this.user!.uid;
+      const switchSyncIncomplete =
+        cloudSyncFailed &&
+        ((!!previousUser && previousUser.uid !== this.user!.uid) || cacheStillBelongsToPreviousAccount);
+      if (switchSyncIncomplete) {
+        this.onToastCb?.(
+          'Cloud Sync Unavailable',
+          'Could not reach Google Drive to sync this account. Local data was left untouched — it will sync on the next sign-in.',
+          'warning'
+        );
+        return;
       }
 
       // Weekly safety snapshot (runs at most once every 7 days)
@@ -178,7 +212,6 @@ class BackupEngine {
       if (this.pendingChanges) {
         this.scheduleAutoBackup(1000);
       }
-      void previousUser;
     } catch (err: any) {
       console.warn('Post sign-in backup check notice:', err);
       if (err?.message !== 'SESSION_EXPIRED') {
@@ -187,6 +220,98 @@ class BackupEngine {
       this.recomputePhase();
       this.emit();
     }
+  }
+
+  /**
+   * Cloud-first reconciliation at sign-in. The latest Drive backup of the
+   * account that just signed in is passed in; the sync policy (cloudSync.ts)
+   * decides how it interacts with this device's local cache:
+   *
+   *   • account switch  → the new account's cloud backup replaces the cache
+   *                       (or the cache is cleared when it has no backups);
+   *   • empty cache     → the cloud backup is restored (new device);
+   *   • newer cloud     → the cloud backup wins (another device synced);
+   *   • otherwise       → the local cache wins so offline edits made while
+   *                       signed out survive and are pushed right after.
+   */
+  private async reconcileCloudWithLocal(
+    latest: { meta: DriveBackupMeta; payload: DriveBackupPayload } | null,
+    previousUser: HisappUser | null
+  ): Promise<void> {
+    const user = this.user;
+    if (!user) return;
+
+    const settings = await getSettings();
+    const entries = await getAllPatientEntries();
+    const settlements = await getAllSettlements();
+    const localWasEmpty = entries.length === 0 && settlements.length === 0;
+    const cloudHasData =
+      !!latest && !!(latest.payload.patientEntries?.length || latest.payload.settlements?.length);
+    const cloudSnapshotAt = latest?.payload.snapshotTimestamp ?? 0;
+
+    const decision = decideSignInSync({
+      userUid: user.uid,
+      previousUserUid: previousUser?.uid ?? null,
+      dataOwnerUid: settings.dataOwnerUid ?? null,
+      localHasData: !localWasEmpty,
+      cloudHasData,
+      cloudSnapshotAt,
+      lastSyncedAt: settings.lastDriveSnapshotTimestamp ?? 0,
+    });
+
+    if (decision.action === 'restore-cloud' && latest) {
+      // Cloud wins: replace the local cache with the account's Drive backup.
+      await restoreAllData(latest.payload);
+      // The local cache now mirrors this account's cloud snapshot — tag the
+      // dataset owner and sync point so the NEXT sign-in compares correctly.
+      await saveSettings({
+        dataOwnerUid: user.uid,
+        lastDriveSnapshotTimestamp: cloudSnapshotAt || null,
+      });
+      this.onRestoredCb?.();
+      if (decision.accountSwitched) {
+        this.onToastCb?.(
+          'Synced from Google Drive',
+          `Loaded "${latest.meta.name}" — this device now shows ${user.email}'s records.`,
+          'success'
+        );
+      } else if (localWasEmpty) {
+        this.onToastCb?.(
+          'Data Restored from Google Drive',
+          `Loaded "${latest.meta.name}" — your records are back.`,
+          'success'
+        );
+      } else {
+        this.onToastCb?.(
+          'Synced from Google Drive',
+          `Loaded "${latest.meta.name}" — newer cloud data replaced this device's cache.`,
+          'info'
+        );
+      }
+      return;
+    }
+
+    if (decision.action === 'clear-local') {
+      // A different account signed in and has no Drive backup of its own:
+      // the local cache belongs to the previous account — remove it from
+      // this device. It remains backed up in that account's own Google Drive
+      // and returns when that account signs in again.
+      await clearAllPatientData();
+      await saveSettings({ dataOwnerUid: user.uid, lastDriveSnapshotTimestamp: null });
+      this.onRestoredCb?.();
+      this.onToastCb?.(
+        'Previous Account Data Cleared',
+        'This device held records from another Google account. They were removed here and remain backed up in that account’s Google Drive.',
+        'warning'
+      );
+      return;
+    }
+
+    // keep-local: the cache is empty, or at least as new as the cloud copy
+    // (offline edits made while signed out are pushed right after sign-in).
+    // Claim the dataset for this account so a later sign-in by a DIFFERENT
+    // account is detected as an account switch.
+    await saveSettings({ dataOwnerUid: user.uid });
   }
 
   // ── Status ───────────────────────────────────────────────────────
@@ -301,6 +426,18 @@ class BackupEngine {
       }
     } catch (err) {
       console.warn('Could not clear profile identity on sign-out:', err);
+    }
+
+    // Tag the local dataset with the departing account. The data itself
+    // stays safely on the device, but a later sign-in by a DIFFERENT Gmail
+    // account must be detected as an account switch — that account's own
+    // Drive backup then takes priority over this cache (see cloudSync.ts).
+    if (this.user) {
+      try {
+        await saveSettings({ dataOwnerUid: this.user.uid });
+      } catch (err) {
+        console.warn('Could not tag the local dataset owner on sign-out:', err);
+      }
     }
 
     await signOutGoogle();
@@ -433,6 +570,7 @@ class BackupEngine {
       this.onToastCb?.('Not Signed In', 'Sign in with your Gmail account first.', 'warning');
       return null;
     }
+    const user = this.user;
     try {
       let token = getSilentGoogleToken();
       if (!token) token = await ensureGoogleToken();
@@ -446,6 +584,8 @@ class BackupEngine {
         return null;
       }
       await restoreAllData(latest.payload);
+      // The local cache now mirrors the signed-in account's cloud backup.
+      await saveSettings({ dataOwnerUid: user.uid });
       await this.syncLastBackupTime();
       this.onRestoredCb?.();
       this.onToastCb?.(
