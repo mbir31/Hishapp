@@ -415,7 +415,7 @@ export const EntryTab: React.FC<EntryTabProps> = ({
               type="date"
               value={date}
               onChange={(e) => setDate(e.target.value)}
-              className="w-full px-3 py-1.5 rounded-xl bg-white/90 border border-slate-200 focus:border-indigo-500 text-slate-800 text-xs font-medium transition outline-none"
+              className="w-full px-3 py-1.5 rounded-xl bg-white/70 border border-white/70 focus:border-indigo-500 text-slate-800 text-xs font-medium transition outline-none"
               required
             />
           </div>
@@ -453,7 +453,7 @@ export const EntryTab: React.FC<EntryTabProps> = ({
                     setShowSuggestions(true);
                   }
                 }}
-                className="w-full px-3 py-1.5 rounded-xl bg-white/90 border border-slate-200 focus:border-indigo-500 text-slate-800 text-xs font-medium transition outline-none placeholder:text-slate-400"
+                className="w-full px-3 py-1.5 rounded-xl bg-white/70 border border-white/70 focus:border-indigo-500 text-slate-800 text-xs font-medium transition outline-none placeholder:text-slate-400"
                 required
                 autoFocus
                 autoComplete="off"
@@ -562,7 +562,7 @@ export const EntryTab: React.FC<EntryTabProps> = ({
               placeholder="Enter custom treatment name..."
               value={customProcedure}
               onChange={(e) => setCustomProcedure(e.target.value)}
-              className="w-full px-3 py-1.5 rounded-xl bg-white/90 border border-indigo-300 focus:border-indigo-500 text-slate-800 text-xs font-medium transition outline-none"
+              className="w-full px-3 py-1.5 rounded-xl bg-white/70 border border-indigo-300/70 focus:border-indigo-500 text-slate-800 text-xs font-medium transition outline-none"
               required
             />
           ) : (
@@ -570,7 +570,7 @@ export const EntryTab: React.FC<EntryTabProps> = ({
               <select
                 value={procedure}
                 onChange={(e) => setProcedure(e.target.value)}
-                className="w-full px-3 py-1.5 rounded-xl bg-white/90 border border-slate-200 focus:border-indigo-500 text-slate-800 text-xs font-medium transition outline-none"
+                className="w-full px-3 py-1.5 rounded-xl bg-white/70 border border-white/70 focus:border-indigo-500 text-slate-800 text-xs font-medium transition outline-none"
               >
                 {procedureList.map((p) => (
                   <option key={p} value={p}>
@@ -592,7 +592,7 @@ export const EntryTab: React.FC<EntryTabProps> = ({
                       className={`px-2 py-0.5 rounded-lg text-[10.5px] font-medium transition active:scale-95 ${
                         isSelected
                           ? 'bg-indigo-600 text-white shadow-2xs'
-                          : 'bg-white/80 text-slate-600 border border-slate-200/80 hover:bg-slate-100'
+                          : 'bg-white/70 text-slate-600 border border-white/70 hover:bg-white/90'
                       }`}
                     >
                       {chip}
@@ -631,7 +631,7 @@ export const EntryTab: React.FC<EntryTabProps> = ({
               placeholder="0"
               value={receivedAmount}
               onChange={(e) => setReceivedAmount(e.target.value)}
-              className="w-full pl-8 pr-3 py-1.5 rounded-xl bg-white/90 border border-slate-200 focus:border-indigo-500 text-slate-900 text-base font-bold tracking-tight transition outline-none"
+              className="w-full pl-8 pr-3 py-1.5 rounded-xl bg-white/70 border border-white/70 focus:border-indigo-500 text-slate-900 text-base font-bold tracking-tight transition outline-none"
               min="0"
               step="any"
               required
@@ -688,7 +688,7 @@ export const EntryTab: React.FC<EntryTabProps> = ({
             placeholder="e.g. Upper 2nd molar, No Payment / Free Campaign note"
             value={remarks}
             onChange={(e) => setRemarks(e.target.value)}
-            className="w-full px-3 py-1.5 rounded-xl bg-white/90 border border-slate-200 focus:border-indigo-500 text-slate-800 text-xs font-medium transition outline-none placeholder:text-slate-400"
+            className="w-full px-3 py-1.5 rounded-xl bg-white/70 border border-white/70 focus:border-indigo-500 text-slate-800 text-xs font-medium transition outline-none placeholder:text-slate-400"
           />
         </div>
 
@@ -711,7 +711,7 @@ export const EntryTab: React.FC<EntryTabProps> = ({
               <button
                 type="button"
                 onClick={() => setDuplicateWarning(null)}
-                className="flex-1 py-1.5 rounded-lg bg-white border border-amber-300 text-amber-900 text-[11px] font-semibold hover:bg-amber-100 transition"
+                className="flex-1 py-1.5 rounded-lg ios-glass-subtle border border-amber-300/70 text-amber-900 text-[11px] font-semibold hover:bg-white/80 transition"
               >
                 Go Back &amp; Edit
               </button>

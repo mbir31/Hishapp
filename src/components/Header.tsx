@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from 'react';
-import { Cloud, CloudOff, RefreshCw, Settings, ShieldAlert, Wifi, WifiOff } from 'lucide-react';
+import { Cloud, CloudOff, LogIn, RefreshCw, Settings, ShieldAlert, Wifi, WifiOff } from 'lucide-react';
 import { ClinicSettings } from '../types';
 import type { BackupStatus } from '../services/backupEngine';
 import { InstallAppButton } from './InstallAppButton';
@@ -93,8 +93,11 @@ export const Header: React.FC<HeaderProps> = ({
   backup,
   onOpenSettings,
 }) => {
-  const avatar = backup.user?.photoURL || settings.doctorPhoto;
-  const avatarAlt = backup.user?.name || settings.doctorName;
+  const avatar = backup.user?.photoURL || settings.doctorPhoto || '';
+  // No account is pre-loaded: the header only shows a name once the doctor has
+  // signed in with their own Gmail (or typed one in Settings).
+  const displayName = backup.user?.name || settings.doctorName?.trim() || '';
+  const avatarAlt = displayName;
   const [avatarFailed, setAvatarFailed] = useState(false);
 
   useEffect(() => {
@@ -143,9 +146,21 @@ export const Header: React.FC<HeaderProps> = ({
             <p className="text-[10px] font-bold tracking-wider uppercase text-indigo-600/90 truncate">
               {settings.clinicName || 'Dental Care Clinic'}
             </p>
-            <h1 className="text-base sm:text-lg font-bold text-slate-900 tracking-tight leading-tight truncate">
-              {backup.user?.name || settings.doctorName || 'Dr. Dental Surgeon'}
-            </h1>
+            {displayName ? (
+              <h1 className="text-base sm:text-lg font-bold text-slate-900 tracking-tight leading-tight truncate">
+                {displayName}
+              </h1>
+            ) : (
+              <button
+                type="button"
+                onClick={onOpenSettings}
+                className="mt-0.5 inline-flex items-center gap-1 px-2 py-0.5 -ml-2 rounded-full text-[11px] font-bold text-indigo-600 hover:text-indigo-700 hover:bg-indigo-50 active:scale-95 transition"
+                title="Sign in with your Gmail account"
+              >
+                <LogIn className="w-3 h-3" />
+                <span>Sign in with Google</span>
+              </button>
+            )}
           </div>
         </div>
 

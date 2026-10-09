@@ -1,16 +1,20 @@
 import React, { useState } from 'react';
-import { Check, Download, X } from 'lucide-react';
+import { Download, X } from 'lucide-react';
 import { usePWAInstall } from '../hooks/usePWAInstall';
 
 /**
  * Dedicated one-click PWA install button, labelled "INSTALL APP".
  * - Chrome / Android / Edge: fires the native beforeinstallprompt flow.
  * - iOS Safari (no native prompt): one click opens the Add-to-Home-Screen guide.
- * - Already installed: shows a small "INSTALLED" chip instead.
+ * - Already installed: the button disappears completely (no leftover chip),
+ *   on every platform and on every future visit.
  */
 export const InstallAppButton: React.FC = () => {
-  const { isInstallable, isInstalled, isIOS, install } = usePWAInstall();
+  const { isInstallable, isInstalled, isIOS, install, markInstalled } = usePWAInstall();
   const [showGuide, setShowGuide] = useState(false);
+
+  // Installed → render nothing at all.
+  if (isInstalled) return null;
 
   const handleClick = async () => {
     if (isInstallable) {
@@ -23,32 +27,34 @@ export const InstallAppButton: React.FC = () => {
     setShowGuide(true);
   };
 
+  const closeGuide = (installed: boolean) => {
+    setShowGuide(false);
+    // The user followed the home-screen guide — hide the button for good.
+    if (installed) markInstalled();
+  };
+
   return (
     <>
-      {isInstalled ? (
-        <div
-          className="flex items-center gap-1 px-2.5 py-1 rounded-full bg-emerald-500/10 text-emerald-700 border border-emerald-500/20 text-[10px] font-bold shrink-0"
-          title="Hisapp is installed on this device"
-        >
-          <Check className="w-3 h-3 text-emerald-600" />
-          <span>INSTALLED</span>
-        </div>
-      ) : (
-        <button
-          type="button"
-          onClick={handleClick}
-          className="flex items-center gap-1 px-2.5 py-1 rounded-full bg-gradient-to-tr from-indigo-600 to-sky-500 text-white text-[10px] font-bold tracking-wide shadow-sm shadow-indigo-500/25 hover:shadow-md hover:brightness-105 active:scale-95 transition-all shrink-0"
-          title="Install Hisapp as an app on this device"
-        >
-          <Download className="w-3 h-3" />
-          <span>INSTALL APP</span>
-        </button>
-      )}
+      <button
+        type="button"
+        onClick={handleClick}
+        className="flex items-center gap-1 px-2.5 py-1 rounded-full bg-gradient-to-tr from-indigo-600 to-sky-500 text-white text-[10px] font-bold tracking-wide shadow-sm shadow-indigo-500/25 hover:shadow-md hover:brightness-105 active:scale-95 transition-all shrink-0"
+        title="Install Hisapp as an app on this device"
+      >
+        <Download className="w-3 h-3" />
+        <span>INSTALL APP</span>
+      </button>
 
       {/* One-click install guide when no native prompt exists */}
       {showGuide && (
-        <div className="fixed inset-0 z-[60] flex items-center justify-center p-4 bg-black/60">
-          <div className="bg-white rounded-2xl p-5 max-w-sm w-full space-y-3">
+        <div
+          className="fixed inset-0 z-[60] flex items-center justify-center p-4 bg-slate-900/50 backdrop-blur-sm"
+          onClick={() => closeGuide(false)}
+        >
+          <div
+            className="ios-glass bg-white/90 rounded-2xl p-5 max-w-sm w-full space-y-3 shadow-2xl"
+            onClick={(e) => e.stopPropagation()}
+          >
             <div className="flex items-center gap-3 pb-2 border-b border-slate-100">
               <img
                 src="/applogo.png"
@@ -65,7 +71,7 @@ export const InstallAppButton: React.FC = () => {
               </div>
               <button
                 type="button"
-                onClick={() => setShowGuide(false)}
+                onClick={() => closeGuide(false)}
                 aria-label="Close install guide"
                 className="w-7 h-7 rounded-full bg-slate-100 hover:bg-slate-200 text-slate-500 flex items-center justify-center active:scale-95 transition"
               >
@@ -91,13 +97,22 @@ export const InstallAppButton: React.FC = () => {
                 </>
               )}
             </p>
-            <button
-              type="button"
-              onClick={() => setShowGuide(false)}
-              className="w-full py-2 rounded-xl bg-indigo-600 hover:bg-indigo-700 text-white text-xs font-bold active:scale-95 transition"
-            >
-              Done
-            </button>
+            <div className="flex items-center gap-2">
+              <button
+                type="button"
+                onClick={() => closeGuide(false)}
+                className="flex-1 py-2 rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-600 text-xs font-semibold active:scale-95 transition"
+              >
+                Later
+              </button>
+              <button
+                type="button"
+                onClick={() => closeGuide(true)}
+                className="flex-1 py-2 rounded-xl bg-indigo-600 hover:bg-indigo-700 text-white text-xs font-bold active:scale-95 transition"
+              >
+                Added to Home Screen
+              </button>
+            </div>
           </div>
         </div>
       )}

@@ -239,13 +239,13 @@ export const HistoryTab: React.FC<HistoryTabProps> = ({
       <div className="ios-glass-card rounded-3xl p-4 sm:p-5 space-y-3">
         {/* View Mode Switcher: Visits Ledger vs Patient Profiles */}
         <div className="flex items-center justify-between pb-2 border-b border-slate-100 flex-wrap gap-2">
-          <div className="flex items-center gap-1 p-1 bg-slate-100/90 rounded-2xl">
+          <div className="ios-glass-subtle flex items-center gap-1 p-1 rounded-2xl">
             <button
               type="button"
               onClick={() => setViewMode('visits')}
               className={`px-3 py-1.5 rounded-xl text-xs font-bold transition flex items-center gap-1.5 active:scale-95 ${
                 viewMode === 'visits'
-                  ? 'bg-white text-indigo-700 shadow-xs'
+                  ? 'bg-white/85 text-indigo-700 shadow-xs'
                   : 'text-slate-600 hover:text-slate-900'
               }`}
             >
@@ -258,7 +258,7 @@ export const HistoryTab: React.FC<HistoryTabProps> = ({
               onClick={() => setViewMode('profiles')}
               className={`px-3 py-1.5 rounded-xl text-xs font-bold transition flex items-center gap-1.5 active:scale-95 ${
                 viewMode === 'profiles'
-                  ? 'bg-white text-indigo-700 shadow-xs'
+                  ? 'bg-white/85 text-indigo-700 shadow-xs'
                   : 'text-slate-600 hover:text-slate-900'
               }`}
             >
@@ -293,7 +293,7 @@ export const HistoryTab: React.FC<HistoryTabProps> = ({
               }
               value={searchQuery}
               onChange={(e) => setSearchQuery(e.target.value)}
-              className="w-full pl-9 pr-8 py-2.5 rounded-2xl bg-white/90 border border-slate-200 text-slate-800 text-xs font-medium focus:border-indigo-500 focus:ring-2 focus:ring-indigo-500/20 outline-none transition"
+              className="w-full pl-9 pr-8 py-2.5 rounded-2xl bg-white/70 border border-white/70 text-slate-800 text-xs font-medium focus:border-indigo-500 focus:ring-2 focus:ring-indigo-500/20 outline-none transition"
             />
             {searchQuery && (
               <button
@@ -315,7 +315,7 @@ export const HistoryTab: React.FC<HistoryTabProps> = ({
                     onClick={() => setStatusFilter(filter)}
                     className={`px-3 py-1.5 rounded-xl text-xs font-semibold transition active:scale-95 ${
                       statusFilter === filter
-                        ? 'bg-white text-indigo-700 shadow-xs'
+                        ? 'bg-white/85 text-indigo-700 shadow-xs'
                         : 'text-slate-600 hover:text-slate-900'
                     }`}
                   >
@@ -370,7 +370,7 @@ export const HistoryTab: React.FC<HistoryTabProps> = ({
               <div
                 key={prof.id}
                 onClick={() => setSelectedPatientForHistory(prof.name)}
-                className="ios-glass-card rounded-2xl p-4 transition-all duration-150 hover:bg-white/95 cursor-pointer group hover:shadow-md border border-slate-200/70"
+                className="ios-glass-card-interactive rounded-2xl p-4 cursor-pointer group border border-white/70"
               >
                 <div className="flex items-start justify-between gap-3">
                   <div className="flex items-start gap-3 min-w-0 flex-1">
@@ -460,7 +460,7 @@ export const HistoryTab: React.FC<HistoryTabProps> = ({
             return (
               <div
                 key={entry.id}
-                className="ios-glass-card rounded-2xl p-4 transition-all duration-150 hover:bg-white/90 group"
+                className="ios-glass-card-interactive rounded-2xl p-4 group"
               >
                 <div className="flex items-start justify-between gap-3">
                   {/* Left: Patient Info & Auto History Link */}

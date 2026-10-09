@@ -219,7 +219,7 @@ export const MonthlySummaryModal: React.FC<MonthlySummaryModalProps> = ({
             </div>
             <div className="flex justify-between items-center">
               <span className="font-semibold text-slate-700">Attending Surgeon:</span>
-              <span className="font-bold text-slate-900">{settings.doctorName}</span>
+              <span className="font-bold text-slate-900">{settings.doctorName || '—'}</span>
             </div>
             <div className="flex justify-between items-center">
               <span className="font-semibold text-slate-700">Reporting Range:</span>

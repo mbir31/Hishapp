@@ -124,7 +124,11 @@ export function exportMonthlySummaryPDF(data: MonthlySummaryData, settings: Clin
   doc.setFontSize(11);
   doc.setFont('helvetica', 'normal');
   doc.setTextColor(199, 210, 254); // Light indigo
-  doc.text(`Doctor: ${settings.doctorName || 'Dental Surgeon'}`, 36, 56);
+  // Hisapp ships with no pre-loaded account: only print a doctor line once
+  // the surgeon has signed in with Google (or typed a name in Settings).
+  if (settings.doctorName && settings.doctorName.trim()) {
+    doc.text(`Doctor: ${settings.doctorName.trim()}`, 36, 56);
+  }
   doc.text(`Compensation Rule: ${sharePercent}% of Collected Patient Billing`, 36, 72);
 
   // Right-aligned report label

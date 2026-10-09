@@ -259,7 +259,7 @@ export const DashboardTab: React.FC<DashboardTabProps> = ({
             </p>
           </div>
 
-          <div className="flex items-center gap-3 bg-white/70 backdrop-blur-md px-4 py-3 rounded-2xl border border-white/80 shadow-sm shrink-0">
+          <div className="ios-glass-subtle flex items-center gap-3 px-4 py-3 rounded-2xl shrink-0">
             <div className="text-right">
               <p className="text-[10px] uppercase font-bold text-slate-400">Previous Arrears</p>
               <p className="text-xs font-bold text-slate-700">
@@ -307,7 +307,7 @@ export const DashboardTab: React.FC<DashboardTabProps> = ({
                     onClick={() => setTrendDays(d)}
                     className={`px-2.5 py-1 rounded-lg text-[11px] font-bold transition active:scale-95 ${
                       trendDays === d
-                        ? 'bg-white text-indigo-700 shadow-xs'
+                        ? 'bg-white/85 text-indigo-700 shadow-xs'
                         : 'text-slate-600 hover:text-slate-900'
                     }`}
                   >
@@ -581,7 +581,7 @@ export const DashboardTab: React.FC<DashboardTabProps> = ({
                   return (
                     <div
                       key={entry.id}
-                      className="p-3 rounded-2xl bg-white/60 hover:bg-white/90 border border-white/80 shadow-xs flex items-center justify-between gap-3 transition"
+                      className="ios-glass-card-interactive p-3 rounded-2xl flex items-center justify-between gap-3"
                     >
                       <div className="min-w-0">
                         <div className="flex items-center gap-2">

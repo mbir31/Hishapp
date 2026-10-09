@@ -193,7 +193,7 @@ export const SettlementTab: React.FC<SettlementTabProps> = ({
   return (
     <div className="max-w-2xl mx-auto space-y-5 pb-24 animate-in fade-in duration-200">
       {/* 1. Outstanding Balance Card (Prominent Header) */}
-      <div className="ios-glass-card rounded-3xl p-6 bg-gradient-to-br from-indigo-600 via-indigo-700 to-sky-700 text-white shadow-xl shadow-indigo-700/20 relative overflow-hidden">
+      <div className="ios-glass-card rounded-3xl p-6 bg-gradient-to-br from-indigo-600/85 via-indigo-700/80 to-sky-700/85 text-white shadow-xl shadow-indigo-700/20 relative overflow-hidden backdrop-blur-2xl">
         <div className="absolute top-0 right-0 -mr-12 -mt-12 w-48 h-48 bg-white/10 rounded-full blur-2xl pointer-events-none" />
 
         <div className="relative z-10 space-y-4">
@@ -233,7 +233,7 @@ export const SettlementTab: React.FC<SettlementTabProps> = ({
       </div>
 
       {/* Monthly Summary PDF Export Banner */}
-      <div className="ios-glass-card rounded-3xl p-4 sm:p-5 flex flex-col sm:flex-row sm:items-center justify-between gap-3 border border-indigo-200/70 bg-gradient-to-r from-indigo-50/60 via-white to-sky-50/60">
+      <div className="ios-glass-card rounded-3xl p-4 sm:p-5 flex flex-col sm:flex-row sm:items-center justify-between gap-3 border border-indigo-200/70 bg-gradient-to-r from-indigo-50/70 via-white/40 to-sky-50/70">
         <div className="flex items-center gap-3">
           <div className="w-10 h-10 rounded-2xl bg-indigo-600 text-white flex items-center justify-center shrink-0 shadow-sm shadow-indigo-600/30">
             <FileText className="w-5 h-5" />
@@ -282,21 +282,21 @@ export const SettlementTab: React.FC<SettlementTabProps> = ({
               <button
                 type="button"
                 onClick={() => handleApplyPreset('all')}
-                className="px-2 py-0.5 text-[10px] font-semibold rounded-lg bg-white border border-slate-200 text-slate-700 hover:bg-slate-100 transition"
+                className="px-2 py-0.5 text-[10px] font-semibold rounded-lg ios-glass-subtle border border-white/70 text-slate-700 hover:bg-white/80 transition"
               >
                 All Pending
               </button>
               <button
                 type="button"
                 onClick={() => handleApplyPreset('14days')}
-                className="px-2 py-0.5 text-[10px] font-semibold rounded-lg bg-white border border-slate-200 text-slate-700 hover:bg-slate-100 transition"
+                className="px-2 py-0.5 text-[10px] font-semibold rounded-lg ios-glass-subtle border border-white/70 text-slate-700 hover:bg-white/80 transition"
               >
                 Last 14d
               </button>
               <button
                 type="button"
                 onClick={() => handleApplyPreset('month')}
-                className="px-2 py-0.5 text-[10px] font-semibold rounded-lg bg-white border border-slate-200 text-slate-700 hover:bg-slate-100 transition"
+                className="px-2 py-0.5 text-[10px] font-semibold rounded-lg ios-glass-subtle border border-white/70 text-slate-700 hover:bg-white/80 transition"
               >
                 This Month
               </button>
@@ -310,7 +310,7 @@ export const SettlementTab: React.FC<SettlementTabProps> = ({
                 type="date"
                 value={periodFrom}
                 onChange={(e) => setPeriodFrom(e.target.value)}
-                className="w-full mt-1 px-3 py-2 rounded-xl bg-white border border-slate-200 text-xs font-medium text-slate-800 focus:border-indigo-500 outline-none"
+                className="w-full mt-1 px-3 py-2 rounded-xl bg-white/70 border border-white/70 text-xs font-medium text-slate-800 focus:border-indigo-500 outline-none"
                 required
               />
             </div>
@@ -320,7 +320,7 @@ export const SettlementTab: React.FC<SettlementTabProps> = ({
                 type="date"
                 value={periodTo}
                 onChange={(e) => setPeriodTo(e.target.value)}
-                className="w-full mt-1 px-3 py-2 rounded-xl bg-white border border-slate-200 text-xs font-medium text-slate-800 focus:border-indigo-500 outline-none"
+                className="w-full mt-1 px-3 py-2 rounded-xl bg-white/70 border border-white/70 text-xs font-medium text-slate-800 focus:border-indigo-500 outline-none"
                 required
               />
             </div>
@@ -381,7 +381,7 @@ export const SettlementTab: React.FC<SettlementTabProps> = ({
               placeholder="0"
               value={amountReceived}
               onChange={(e) => setAmountReceived(e.target.value)}
-              className="w-full pl-9 pr-3.5 py-3 rounded-2xl bg-white/90 border border-slate-200 focus:border-indigo-500 focus:ring-2 focus:ring-indigo-500/20 text-slate-900 text-xl font-bold tracking-tight transition outline-none"
+              className="w-full pl-9 pr-3.5 py-3 rounded-2xl bg-white/70 border border-white/70 focus:border-indigo-500 focus:ring-2 focus:ring-indigo-500/20 text-slate-900 text-xl font-bold tracking-tight transition outline-none"
               min="0"
               step="any"
               required
@@ -444,7 +444,7 @@ export const SettlementTab: React.FC<SettlementTabProps> = ({
               placeholder="e.g. Paid via Bank transfer #TXN9928, balance ৳1,000 next Thursday"
               value={remarks}
               onChange={(e) => setRemarks(e.target.value)}
-              className="w-full px-3.5 py-2.5 rounded-2xl bg-white/80 border border-slate-200 focus:border-indigo-500 focus:ring-2 focus:ring-indigo-500/20 text-slate-800 text-xs sm:text-sm font-medium transition outline-none"
+              className="w-full px-3.5 py-2.5 rounded-2xl bg-white/70 border border-white/70 focus:border-indigo-500 focus:ring-2 focus:ring-indigo-500/20 text-slate-800 text-xs sm:text-sm font-medium transition outline-none"
             />
           </div>
         </div>
@@ -490,7 +490,7 @@ export const SettlementTab: React.FC<SettlementTabProps> = ({
               settlements.map((s) => (
                 <div
                   key={s.settlementId}
-                  className="p-3.5 rounded-2xl bg-white/70 border border-slate-200/70 shadow-2xs space-y-2"
+                  className="ios-glass-card p-3.5 rounded-2xl space-y-2"
                 >
                   <div className="flex items-center justify-between">
                     <div>

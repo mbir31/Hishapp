@@ -58,6 +58,12 @@ export interface ClinicSettings {
   doctorName: string;
   doctorEmail?: string;
   doctorPhoto?: string;
+  /**
+   * Firebase uid of the Google account this doctor identity was filled from.
+   * Empty until the user signs in with their own Gmail — Hisapp never
+   * pre-populates a doctor / account identity.
+   */
+  ownerUid?: string | null;
   currencySymbol: string;
   sharePercentage: number;
   autoBackup: boolean;

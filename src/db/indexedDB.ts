@@ -24,10 +24,31 @@ export const DEFAULT_AMOUNT_PRESETS: AmountPreset[] = [
   { id: 'amt-5000', label: '5000', amount: 5000 },
 ];
 
+/** Pre-loaded clinic branding only — no account / doctor identity is preset. */
+export const DEFAULT_CLINIC_NAME = 'Yashfin Dental Care';
+export const DEFAULT_CLINIC_LOGO = '/dlogo.png';
+
+/**
+ * Doctor names that used to ship pre-filled with the app. They are NOT real
+ * accounts, so any profile still carrying one is treated as "no account yet"
+ * and cleared — the doctor identity is only ever taken from the user's own
+ * Gmail sign-in (or typed by hand in Settings).
+ */
+export const PRESET_DOCTOR_NAMES = [
+  'Dr. MBR (BDS, PGT-OMS)',
+  'Dr. MBR',
+  'Dr. Dental Surgeon',
+  'Dental Surgeon',
+  'Doctor',
+];
+
 export const DEFAULT_SETTINGS: ClinicSettings = {
-  clinicName: 'Yashfin Dental Care',
-  clinicLogo: '/dlogo.png',
-  doctorName: 'Dr. MBR (BDS, PGT-OMS)',
+  clinicName: DEFAULT_CLINIC_NAME,
+  clinicLogo: DEFAULT_CLINIC_LOGO,
+  doctorName: '',
+  doctorEmail: '',
+  doctorPhoto: '',
+  ownerUid: null,
   currencySymbol: '৳',
   sharePercentage: 40,
   autoBackup: true,
@@ -538,9 +559,23 @@ export async function getSettings(): Promise<ClinicSettings> {
         const stored = req.result.value;
         const clinicName =
           !stored.clinicName || stored.clinicName === 'Apex Dental & Maxillofacial Care'
-            ? 'Yashfin Dental Care'
+            ? DEFAULT_CLINIC_NAME
             : stored.clinicName;
-        const clinicLogo = stored.clinicLogo || '/dlogo.png';
+        const clinicLogo = stored.clinicLogo || DEFAULT_CLINIC_LOGO;
+
+        // ── No pre-loaded account ──────────────────────────────────────
+        // A doctor identity may only come from the user's own Gmail sign-in
+        // (ownerUid set) or from being typed manually in Settings. Anything
+        // matching one of the old hard-coded placeholder names is cleared so
+        // a fresh install never shows somebody else's account.
+        const rawDoctorName = typeof stored.doctorName === 'string' ? stored.doctorName.trim() : '';
+        const isPresetDoctorName =
+          rawDoctorName !== '' && PRESET_DOCTOR_NAMES.includes(rawDoctorName);
+        const doctorName = isPresetDoctorName ? '' : rawDoctorName;
+        const doctorEmail = isPresetDoctorName ? '' : stored.doctorEmail || '';
+        const doctorPhoto = isPresetDoctorName ? '' : stored.doctorPhoto || '';
+        const ownerUid = isPresetDoctorName ? null : stored.ownerUid || null;
+
         const procedures =
           stored.procedures && Array.isArray(stored.procedures) && stored.procedures.length > 0
             ? stored.procedures
@@ -554,6 +589,10 @@ export async function getSettings(): Promise<ClinicSettings> {
           ...stored,
           clinicName,
           clinicLogo,
+          doctorName,
+          doctorEmail,
+          doctorPhoto,
+          ownerUid,
           procedures,
           amountPresets,
         });
