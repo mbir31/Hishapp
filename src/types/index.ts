@@ -64,6 +64,15 @@ export interface ClinicSettings {
    * pre-populates a doctor / account identity.
    */
   ownerUid?: string | null;
+  /**
+   * Firebase uid of the Google account that OWNS the locally cached dataset.
+   * It is set when local data is claimed, restored or cleared for an account,
+   * and it deliberately survives sign-out (the dataset stays on the device),
+   * so a later sign-in by a DIFFERENT Google account is detected as an
+   * account switch — that account's own Google Drive backup then takes
+   * priority over this device's local cache.
+   */
+  dataOwnerUid?: string | null;
   currencySymbol: string;
   sharePercentage: number;
   autoBackup: boolean;

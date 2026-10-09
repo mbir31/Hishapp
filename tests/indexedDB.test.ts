@@ -5,6 +5,7 @@ import { IDBFactory } from 'fake-indexeddb';
 import 'fake-indexeddb/auto';
 import {
   calculateSettlementSummary,
+  clearAllPatientData,
   DEFAULT_AMOUNT_PRESETS,
   DEFAULT_PROCEDURES,
   exportAllDataJSON,
@@ -309,6 +310,47 @@ test('restoring an old backup cannot reintroduce untouched demo records', async 
   assert.deepEqual(await getAllSettlements(), [realSettlement]);
   assert.deepEqual(await getAllPatientProfiles(), [realProfile]);
   assert.deepEqual(await getSettings(), current);
+});
+
+test('restoring a backup never re-tags the dataset owner of this device', async () => {
+  await saveSettings({ dataOwnerUid: 'device-owner-uid' });
+  await restoreAllData({
+    patientEntries: [realEntry],
+    settlements: [],
+    settings: { dataOwnerUid: 'someone-else-uid' },
+  });
+  // The device's ownership tag survives the restore; the backup engine sets
+  // it explicitly after Drive restores (see backupEngine/cloudSync).
+  assert.equal((await getSettings()).dataOwnerUid, 'device-owner-uid');
+  assert.deepEqual(await getAllPatientEntries(), [realEntry]);
+});
+
+test('clearing the patient dataset empties all record stores but keeps settings untouched', async () => {
+  const settingsBefore = await saveSettings({
+    clinicName: 'Smile Studio',
+    doctorName: 'Dr. Ayesha Rahman',
+    dataOwnerUid: 'firebase-uid-123',
+    lastDriveSnapshotTimestamp: 123456,
+  });
+  await populate({
+    patientEntries: [realEntry],
+    settlements: [realSettlement],
+    patientProfiles: [realProfile],
+    auditLogs: [realAudit],
+  });
+
+  await clearAllPatientData();
+
+  // Every record store is empty — the previous account's data is gone from
+  // this device — while the settings record (incl. the dataset owner tag
+  // used for account-switch detection) is preserved.
+  await assertEmptyRecords();
+  assert.deepEqual(await getSettings(), settingsBefore);
+  assert.equal(await getNextSerial(), 1);
+
+  // Clearing an already empty database is a harmless no-op.
+  await clearAllPatientData();
+  await assertEmptyRecords();
 });
 
 test('the first real visit starts at serial 1 and survives subsequent startup cleanup', async () => {

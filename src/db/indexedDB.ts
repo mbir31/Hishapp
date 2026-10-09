@@ -49,6 +49,7 @@ export const DEFAULT_SETTINGS: ClinicSettings = {
   doctorEmail: '',
   doctorPhoto: '',
   ownerUid: null,
+  dataOwnerUid: null,
   currencySymbol: '৳',
   sharePercentage: 40,
   autoBackup: true,
@@ -901,9 +902,42 @@ export async function clearAuditLogs(): Promise<void> {
 // ---------------- Google Drive Restore ---------------- //
 
 /**
+ * Remove every patient record (entries, settlements, profiles, audit logs)
+ * from the local database WITHOUT touching settings.
+ *
+ * Used when a DIFFERENT Google account signs in on this device and that
+ * account has no Drive backup of its own: the cached dataset belongs to the
+ * previous account, so it must neither be shown to the new account nor be
+ * backed up into it. The previous account's copy stays safe in its own
+ * Google Drive and returns when that account signs in again.
+ */
+export async function clearAllPatientData(): Promise<void> {
+  const db = await openDB();
+  try {
+    await new Promise<void>((resolve, reject) => {
+      const tx = db.transaction(
+        ['patient_entries', 'settlements', 'patient_profiles', 'audit_logs'],
+        'readwrite'
+      );
+      tx.objectStore('patient_entries').clear();
+      tx.objectStore('settlements').clear();
+      tx.objectStore('patient_profiles').clear();
+      tx.objectStore('audit_logs').clear();
+      tx.oncomplete = () => resolve();
+      tx.onerror = () => reject(tx.error);
+      tx.onabort = () => reject(tx.error);
+    });
+  } finally {
+    db.close();
+  }
+}
+
+/**
  * Replace the entire local database with the contents of a Google Drive
  * backup snapshot. Cloud bookkeeping fields always stay local so a stale
- * backup can never clobber this device's backup schedule/folder.
+ * backup can never clobber this device's backup schedule/folder — including
+ * the dataset-ownership tag (dataOwnerUid), which the backup engine sets
+ * explicitly after every Drive restore.
  */
 export async function restoreAllData(payload: {
   patientEntries: any[];
@@ -923,6 +957,9 @@ export async function restoreAllData(payload: {
     lastDriveSnapshotTimestamp: current.lastDriveSnapshotTimestamp ?? null,
     driveFolderId: current.driveFolderId ?? null,
     ledgerSpreadsheetId: current.ledgerSpreadsheetId ?? null,
+    // Which account owns this device's cached dataset is device bookkeeping,
+    // not dataset content — a backup (or an imported file) never re-tags it.
+    dataOwnerUid: current.dataOwnerUid ?? null,
     procedures:
       backupSettings.procedures && backupSettings.procedures.length > 0
         ? backupSettings.procedures
