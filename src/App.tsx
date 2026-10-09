@@ -266,6 +266,7 @@ export default function App() {
         isOnline={isOnline}
         backup={backupStatus}
         onOpenSettings={() => setIsSettingsOpen(true)}
+        onSyncNow={() => void backupEngine.backupNow()}
       />
 
       {/* Firebase setup banner — shown until the web config is pasted */}
