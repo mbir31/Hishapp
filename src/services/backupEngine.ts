@@ -123,9 +123,11 @@ class BackupEngine {
         });
         this.onRestoredCb?.(); // let the app refresh settings UI
       } else if (settings.ownerUid && settings.ownerUid !== this.user!.uid) {
-        // A different Google account signed in on this device — follow it.
+        // A different Google account signed in on this device — follow it,
+        // but never clobber a Doctor Name the doctor typed in Settings: that
+        // field is what the header displays.
         await saveSettings({
-          doctorName: this.user!.name,
+          doctorName: settings.doctorName.trim() || this.user!.name,
           doctorEmail: this.user!.email,
           doctorPhoto: this.user!.photoURL || '',
           ownerUid: this.user!.uid,

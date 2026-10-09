@@ -370,7 +370,7 @@
   --nav-shadow: rgba(217, 119, 6, 0.12);
 }
 
-.bottom-nav__item--history {
+.bottom-nav__item--records {
   --nav-accent: #3478d4;
   --nav-tint: rgba(59, 130, 246, 0.13);
   --nav-border: rgba(59, 130, 246, 0.18);
@@ -530,4 +530,368 @@
 }
 ::-webkit-scrollbar-thumb:hover {
   background: rgba(148, 163, 184, 0.5);
+}
+
+/* ─────────────────────────────────────────────────────────────────────
+   MOTION SYSTEM
+   Tab change transitions, glowing animated card borders, dynamic
+   gradient buttons and glowing input fields. Everything below is
+   unlayered so it reliably wins over Tailwind utilities, and every
+   animation is switched off under `prefers-reduced-motion`.
+   ───────────────────────────────────────────────────────────────────── */
+
+/* Registered angle so conic gradients can be animated smoothly.
+   (Browsers without @property simply fall back to the static 0deg ring.) */
+@property --glow-angle {
+  syntax: '<angle>';
+  inherits: false;
+  initial-value: 0deg;
+}
+
+@keyframes glow-rotate {
+  to {
+    --glow-angle: 360deg;
+  }
+}
+
+@keyframes glow-breathe {
+  0%,
+  100% {
+    opacity: 0.45;
+  }
+  50% {
+    opacity: 1;
+  }
+}
+
+/* ── 1. TAB CHANGE TRANSITION ─────────────────────────────────────────
+   The panel is keyed by the active tab, so it remounts and replays this
+   animation on every tab switch. `backwards` fill is deliberate: no
+   transform survives the animation, keeping `position: fixed` modals
+   rendered inside a tab anchored to the viewport. */
+.tab-panel {
+  animation: tab-panel-in 420ms cubic-bezier(0.22, 1, 0.36, 1) backwards;
+}
+
+.tab-panel--forward {
+  --tab-slide-from: 28px;
+}
+
+.tab-panel--backward {
+  --tab-slide-from: -28px;
+}
+
+@keyframes tab-panel-in {
+  from {
+    opacity: 0;
+    transform: translate3d(var(--tab-slide-from, 0px), 14px, 0) scale(0.975);
+  }
+  55% {
+    opacity: 1;
+  }
+  to {
+    opacity: 1;
+    transform: translate3d(0, 0, 0) scale(1);
+  }
+}
+
+/* ── 2. GLOWING ANIMATED CARD BORDERS ─────────────────────────────────
+   A conic gradient is painted into the 1.5px ring of every glass card by
+   masking out the card body, then slowly rotated around the border. */
+.ios-glass-card,
+.ios-glass-card-interactive,
+.glow-card {
+  position: relative;
+}
+
+.ios-glass-card::after,
+.glow-card::after,
+.ios-glass-card-interactive::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  border-radius: inherit;
+  padding: 1.5px;
+  background: conic-gradient(
+    from var(--glow-angle, 0deg),
+    rgba(99, 102, 241, 0) 0deg,
+    rgba(99, 102, 241, 0.85) 38deg,
+    rgba(56, 189, 248, 0.95) 76deg,
+    rgba(45, 212, 191, 0.65) 116deg,
+    rgba(99, 102, 241, 0) 168deg,
+    rgba(167, 139, 250, 0) 214deg,
+    rgba(167, 139, 250, 0.85) 268deg,
+    rgba(244, 114, 182, 0.6) 304deg,
+    rgba(99, 102, 241, 0) 352deg
+  );
+  -webkit-mask:
+    linear-gradient(#000 0 0) content-box,
+    linear-gradient(#000 0 0);
+  -webkit-mask-composite: xor;
+  mask:
+    linear-gradient(#000 0 0) content-box,
+    linear-gradient(#000 0 0);
+  mask-composite: exclude;
+  pointer-events: none;
+  z-index: 0;
+  opacity: 0.8;
+  animation:
+    glow-rotate 9s linear infinite,
+    glow-breathe 5.5s ease-in-out infinite;
+}
+
+/* Small pressable tiles stay calm until they are hovered / focused.
+   (Only the rotation runs here — opacity is left to the transition so the
+   ring can fade in instead of permanently breathing.) */
+.ios-glass-card-interactive::after {
+  opacity: 0;
+  transition: opacity 260ms ease;
+  animation: glow-rotate 6s linear infinite;
+}
+
+.ios-glass-card-interactive:hover::after,
+.ios-glass-card-interactive:focus-within::after {
+  opacity: 0.95;
+}
+
+/* Opt-out hook for any surface that should stay perfectly plain */
+.glow-card-off::after {
+  content: none !important;
+}
+
+/* ── 3. DYNAMIC GRADIENT BUTTONS ──────────────────────────────────────
+   A wide multi-stop gradient slides across the button forever, so the
+   colour of every primary action keeps shifting. */
+.btn-gradient {
+  --btn-glow: rgba(79, 70, 229, 0.55);
+  position: relative;
+  color: #fff;
+  background-color: #4f46e5;
+  background-image: linear-gradient(
+    110deg,
+    #4f46e5 0%,
+    #0ea5e9 18%,
+    #06b6d4 32%,
+    #10b981 46%,
+    #6366f1 62%,
+    #8b5cf6 78%,
+    #4f46e5 100%
+  );
+  background-size: 320% 100%;
+  background-position: 0% 50%;
+  box-shadow:
+    0 8px 20px -10px var(--btn-glow),
+    inset 0 1px 0 rgba(255, 255, 255, 0.28);
+  animation: btn-gradient-pan 9s linear infinite;
+  transition:
+    filter 180ms ease,
+    box-shadow 220ms ease,
+    transform 150ms cubic-bezier(0.2, 0.8, 0.2, 1);
+}
+
+.btn-gradient:hover:not(:disabled) {
+  filter: saturate(1.2) brightness(1.07);
+  box-shadow:
+    0 14px 28px -12px var(--btn-glow),
+    inset 0 1px 0 rgba(255, 255, 255, 0.35);
+  animation-duration: 4.5s;
+}
+
+.btn-gradient:active:not(:disabled) {
+  transform: scale(0.97);
+}
+
+.btn-gradient:disabled {
+  animation-play-state: paused;
+  filter: grayscale(0.3);
+}
+
+.btn-gradient--emerald {
+  --btn-glow: rgba(5, 150, 105, 0.55);
+  background-color: #059669;
+  background-image: linear-gradient(
+    110deg,
+    #047857 0%,
+    #10b981 20%,
+    #22c55e 38%,
+    #14b8a6 56%,
+    #0ea5e9 74%,
+    #059669 100%
+  );
+}
+
+.btn-gradient--amber {
+  --btn-glow: rgba(217, 119, 6, 0.55);
+  background-color: #d97706;
+  background-image: linear-gradient(
+    110deg,
+    #b45309 0%,
+    #f59e0b 22%,
+    #fb923c 42%,
+    #f43f5e 62%,
+    #f59e0b 82%,
+    #b45309 100%
+  );
+}
+
+.btn-gradient--rose {
+  --btn-glow: rgba(225, 29, 72, 0.55);
+  background-color: #e11d48;
+  background-image: linear-gradient(
+    110deg,
+    #be123c 0%,
+    #f43f5e 22%,
+    #fb7185 42%,
+    #ef4444 62%,
+    #e11d48 82%,
+    #be123c 100%
+  );
+}
+
+.btn-gradient--sky {
+  --btn-glow: rgba(2, 132, 199, 0.55);
+  background-color: #0284c7;
+  background-image: linear-gradient(
+    110deg,
+    #0369a1 0%,
+    #0ea5e9 22%,
+    #38bdf8 42%,
+    #6366f1 62%,
+    #0ea5e9 82%,
+    #0369a1 100%
+  );
+}
+
+@keyframes btn-gradient-pan {
+  0% {
+    background-position: 0% 50%;
+  }
+  100% {
+    background-position: 320% 50%;
+  }
+}
+
+/* ── 4. GLOWING INPUT FIELDS (Entry tab name + payment) ───────────────
+   The wrapper paints a rotating gradient ring; the field itself pulses
+   with an inner glow that intensifies on focus. */
+.glow-field {
+  position: relative;
+  border-radius: 0.75rem;
+}
+
+.glow-field::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  border-radius: inherit;
+  padding: 1.5px;
+  background: conic-gradient(
+    from var(--glow-angle, 0deg),
+    rgba(99, 102, 241, 0) 0deg,
+    rgba(99, 102, 241, 0.9) 46deg,
+    rgba(56, 189, 248, 1) 92deg,
+    rgba(45, 212, 191, 0.7) 140deg,
+    rgba(99, 102, 241, 0) 196deg,
+    rgba(167, 139, 250, 0) 236deg,
+    rgba(167, 139, 250, 0.9) 292deg,
+    rgba(99, 102, 241, 0) 352deg
+  );
+  -webkit-mask:
+    linear-gradient(#000 0 0) content-box,
+    linear-gradient(#000 0 0);
+  -webkit-mask-composite: xor;
+  mask:
+    linear-gradient(#000 0 0) content-box,
+    linear-gradient(#000 0 0);
+  mask-composite: exclude;
+  pointer-events: none;
+  z-index: 2;
+  opacity: 0.85;
+  animation:
+    glow-rotate 6s linear infinite,
+    glow-breathe 4.5s ease-in-out infinite;
+}
+
+.glow-field:focus-within::after {
+  opacity: 1;
+  animation-duration: 3s, 3s;
+}
+
+.glow-input {
+  position: relative;
+  z-index: 1;
+  background-color: rgba(255, 255, 255, 0.82);
+  animation: input-inner-glow 4s ease-in-out infinite;
+  transition: background-color 200ms ease;
+}
+
+.glow-input:focus {
+  background-color: rgba(255, 255, 255, 0.97);
+  animation-name: input-inner-glow-focus;
+  animation-duration: 2.4s;
+}
+
+@keyframes input-inner-glow {
+  0%,
+  100% {
+    box-shadow:
+      inset 0 0 10px -3px rgba(99, 102, 241, 0.3),
+      inset 0 1px 0 rgba(255, 255, 255, 0.85);
+  }
+  50% {
+    box-shadow:
+      inset 0 0 18px -2px rgba(56, 189, 248, 0.5),
+      inset 0 1px 0 rgba(255, 255, 255, 0.95);
+  }
+}
+
+@keyframes input-inner-glow-focus {
+  0%,
+  100% {
+    box-shadow:
+      inset 0 0 14px -2px rgba(99, 102, 241, 0.45),
+      0 0 0 3px rgba(99, 102, 241, 0.13);
+  }
+  50% {
+    box-shadow:
+      inset 0 0 24px -2px rgba(56, 189, 248, 0.6),
+      0 0 0 4px rgba(56, 189, 248, 0.2);
+  }
+}
+
+/* ── 5. HEADER CLINIC LOGO RING ───────────────────────────────────────
+   Circular avatar-style logo frame with a slowly spinning colour ring. */
+.logo-ring {
+  background-color: #6366f1;
+  background-image: conic-gradient(
+    from var(--glow-angle, 0deg),
+    #4f46e5,
+    #0ea5e9,
+    #2dd4bf,
+    #10b981,
+    #a78bfa,
+    #f472b6,
+    #4f46e5
+  );
+  animation: glow-rotate 7s linear infinite;
+}
+
+/* ── 6. ACCESSIBILITY: honour reduced-motion preferences ──────────────*/
+@media (prefers-reduced-motion: reduce) {
+  .tab-panel,
+  .ios-glass-card::after,
+  .ios-glass-card-interactive::after,
+  .glow-card::after,
+  .glow-field::after,
+  .glow-input,
+  .btn-gradient,
+  .logo-ring {
+    animation: none !important;
+  }
+
+  .glow-input {
+    box-shadow:
+      inset 0 0 10px -3px rgba(99, 102, 241, 0.3),
+      inset 0 1px 0 rgba(255, 255, 255, 0.85);
+  }
 }

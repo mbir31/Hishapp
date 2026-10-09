@@ -494,7 +494,7 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
                   type="button"
                   onClick={() => onBackupNow()}
                   disabled={backup.phase === 'syncing'}
-                  className="px-3.5 py-2 rounded-xl bg-sky-600 hover:bg-sky-700 text-white text-xs font-semibold flex items-center gap-1.5 active:scale-95 transition disabled:opacity-60"
+                  className="btn-gradient btn-gradient--sky px-3.5 py-2 rounded-xl text-white text-xs font-semibold flex items-center gap-1.5 disabled:opacity-60"
                 >
                   <CloudUpload className={`w-3.5 h-3.5 ${backup.phase === 'syncing' ? 'animate-pulse' : ''}`} />
                   <span>{backup.phase === 'syncing' ? 'Backing Up...' : 'Backup to Drive Now'}</span>
@@ -700,7 +700,7 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
           <button
             type="submit"
             disabled={isSaving}
-            className="w-full py-2.5 rounded-xl bg-slate-800 hover:bg-slate-900 active:scale-95 text-white text-xs font-bold transition flex items-center justify-center gap-1.5"
+            className="btn-gradient w-full py-2.5 rounded-xl text-white text-xs font-bold flex items-center justify-center gap-1.5 disabled:opacity-60"
           >
             <Save className="w-3.5 h-3.5" />
             <span>{isSaving ? 'Saving...' : 'Save Profile Changes'}</span>
@@ -827,7 +827,7 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
                   type="button"
                   onClick={handleConfirmImport}
                   disabled={isImporting}
-                  className="flex-1 py-2 rounded-xl bg-rose-600 hover:bg-rose-700 text-white text-xs font-bold transition flex items-center justify-center gap-1.5 disabled:opacity-70"
+                  className="btn-gradient btn-gradient--rose flex-1 py-2 rounded-xl text-white text-xs font-bold flex items-center justify-center gap-1.5 disabled:opacity-70"
                 >
                   {isImporting ? (
                     <Loader2 className="w-3.5 h-3.5 animate-spin" />
@@ -864,7 +864,7 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
           ) : isInstallable ? (
             <button
               onClick={install}
-              className="px-3 py-1.5 rounded-xl bg-indigo-600 hover:bg-indigo-700 text-white text-xs font-bold active:scale-95 transition"
+              className="btn-gradient px-3 py-1.5 rounded-xl text-white text-xs font-bold"
             >
               Install
             </button>
@@ -902,7 +902,7 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
               </p>
               <button
                 onClick={() => setShowIOSPrompt(false)}
-                className="w-full py-2 rounded-xl bg-indigo-600 text-white text-xs font-bold"
+                className="btn-gradient w-full py-2 rounded-xl text-white text-xs font-bold"
               >
                 Done
               </button>

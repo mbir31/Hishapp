@@ -162,7 +162,7 @@ export const AmountPresetManagerModal: React.FC<AmountPresetManagerModalProps> =
           <button
             type="button"
             onClick={handleAdd}
-            className="w-full py-2 rounded-xl bg-indigo-600 hover:bg-indigo-700 active:scale-95 text-white text-xs font-bold flex items-center justify-center gap-1.5 transition"
+            className="btn-gradient w-full py-2 rounded-xl text-white text-xs font-bold flex items-center justify-center gap-1.5"
           >
             <Plus className="w-4 h-4" />
             <span>Add Preset</span>
@@ -201,7 +201,7 @@ export const AmountPresetManagerModal: React.FC<AmountPresetManagerModalProps> =
                     <button
                       type="button"
                       onClick={handleConfirmEdit}
-                      className="p-1.5 rounded-lg bg-emerald-600 text-white hover:bg-emerald-700 transition"
+                      className="btn-gradient btn-gradient--emerald p-1.5 rounded-lg text-white"
                       title="Save"
                     >
                       <Check className="w-3.5 h-3.5" />
@@ -270,7 +270,7 @@ export const AmountPresetManagerModal: React.FC<AmountPresetManagerModalProps> =
               type="button"
               onClick={handleSaveAndClose}
               disabled={isSaving}
-              className="px-4 py-2 rounded-xl bg-indigo-600 hover:bg-indigo-700 active:scale-95 text-white text-xs font-bold transition disabled:opacity-60"
+              className="btn-gradient px-4 py-2 rounded-xl text-white text-xs font-bold disabled:opacity-60"
             >
               {isSaving ? 'Saving...' : 'Apply & Save'}
             </button>

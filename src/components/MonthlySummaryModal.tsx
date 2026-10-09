@@ -287,7 +287,7 @@ export const MonthlySummaryModal: React.FC<MonthlySummaryModalProps> = ({
             type="button"
             onClick={handleDownloadPDF}
             disabled={isExporting}
-            className="px-5 py-2.5 rounded-xl bg-gradient-to-r from-indigo-600 to-sky-600 hover:from-indigo-700 hover:to-sky-700 text-white text-xs font-bold flex items-center gap-2 shadow-md shadow-indigo-600/25 transition active:scale-95 disabled:opacity-60"
+            className="btn-gradient px-5 py-2.5 rounded-xl text-white text-xs font-bold flex items-center gap-2 disabled:opacity-60"
           >
             <Download className="w-4 h-4" />
             <span>{isExporting ? 'Generating PDF...' : 'Download Formatted PDF'}</span>

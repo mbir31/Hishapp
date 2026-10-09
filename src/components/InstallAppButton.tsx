@@ -38,7 +38,7 @@ export const InstallAppButton: React.FC = () => {
       <button
         type="button"
         onClick={handleClick}
-        className="flex items-center gap-1 px-2.5 py-1 rounded-full bg-gradient-to-tr from-indigo-600 to-sky-500 text-white text-[10px] font-bold tracking-wide shadow-sm shadow-indigo-500/25 hover:shadow-md hover:brightness-105 active:scale-95 transition-all shrink-0"
+        className="btn-gradient flex items-center gap-1 px-2.5 py-1 rounded-full text-white text-[10px] font-bold tracking-wide shrink-0"
         title="Install Hisapp as an app on this device"
       >
         <Download className="w-3 h-3" />
@@ -108,7 +108,7 @@ export const InstallAppButton: React.FC = () => {
               <button
                 type="button"
                 onClick={() => closeGuide(true)}
-                className="flex-1 py-2 rounded-xl bg-indigo-600 hover:bg-indigo-700 text-white text-xs font-bold active:scale-95 transition"
+                className="btn-gradient flex-1 py-2 rounded-xl text-white text-xs font-bold"
               >
                 Added to Home Screen
               </button>

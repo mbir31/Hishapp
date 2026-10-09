@@ -93,7 +93,7 @@ export const DeleteConfirmationModal: React.FC<DeleteConfirmationModalProps> = (
             type="button"
             onClick={handleDelete}
             disabled={isDeleting}
-            className="px-4 py-2.5 rounded-xl bg-rose-600 hover:bg-rose-700 active:scale-95 text-white text-xs font-bold flex items-center gap-1.5 shadow-md shadow-rose-600/20 transition disabled:opacity-60"
+            className="btn-gradient btn-gradient--rose px-4 py-2.5 rounded-xl text-white text-xs font-bold flex items-center gap-1.5 disabled:opacity-60"
           >
             <Trash2 className="w-4 h-4" />
             <span>{isDeleting ? 'Deleting...' : 'Yes, Delete Record'}</span>
