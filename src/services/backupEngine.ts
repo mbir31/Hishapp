@@ -108,15 +108,29 @@ class BackupEngine {
 
   private async handleSignedIn(previousUser: HisappUser | null): Promise<void> {
     try {
-      // Personalize the clinic profile the first time a Google account connects
+      // Personalize the clinic profile from the user's own Gmail account.
+      // Hisapp ships with NO pre-filled doctor / account identity, so the
+      // profile is only populated once somebody actually signs in (or if the
+      // doctor name is still blank because it was never typed).
       const settings = await getSettings();
-      if (settings.doctorName === 'Dr. MBR (BDS, PGT-OMS)') {
+      const identityIsAutoFilled = !!settings.ownerUid || !!settings.doctorEmail;
+      if (!identityIsAutoFilled && !settings.doctorName.trim()) {
         await saveSettings({
           doctorName: this.user!.name,
           doctorEmail: this.user!.email,
-          doctorPhoto: this.user!.photoURL || settings.doctorPhoto,
+          doctorPhoto: this.user!.photoURL || settings.doctorPhoto || '',
+          ownerUid: this.user!.uid,
         });
         this.onRestoredCb?.(); // let the app refresh settings UI
+      } else if (settings.ownerUid && settings.ownerUid !== this.user!.uid) {
+        // A different Google account signed in on this device — follow it.
+        await saveSettings({
+          doctorName: this.user!.name,
+          doctorEmail: this.user!.email,
+          doctorPhoto: this.user!.photoURL || '',
+          ownerUid: this.user!.uid,
+        });
+        this.onRestoredCb?.();
       }
 
       // New device / wiped browser: local DB is empty → auto-restore the
@@ -271,11 +285,30 @@ class BackupEngine {
   }
 
   async signOut(): Promise<void> {
+    // Remove the Google identity that was auto-filled at sign-in so the app
+    // falls back to "clinic only, no account" (clinic name + logo are kept).
+    let clearedIdentity = false;
+    try {
+      const settings = await getSettings();
+      if (settings.ownerUid && settings.ownerUid === this.user?.uid) {
+        await saveSettings({
+          doctorName: '',
+          doctorEmail: '',
+          doctorPhoto: '',
+          ownerUid: null,
+        });
+        clearedIdentity = true;
+      }
+    } catch (err) {
+      console.warn('Could not clear profile identity on sign-out:', err);
+    }
+
     await signOutGoogle();
     this.pendingChanges = false;
     this.error = null;
     this.recomputePhase();
     this.emit();
+    if (clearedIdentity) this.onRestoredCb?.();
   }
 
   private async runBackup(trigger: 'auto' | 'manual'): Promise<DriveBackupOk | null> {

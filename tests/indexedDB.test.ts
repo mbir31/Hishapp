@@ -329,3 +329,71 @@ test('the first real visit starts at serial 1 and survives subsequent startup cl
   assert.deepEqual(await getAllSettlements(), []);
   assert.equal(await getNextSerial(), 2);
 });
+
+// ── No pre-loaded account ──────────────────────────────────────────────
+// Only the clinic name + logo ship with the app. The doctor / account
+// identity may never appear until the user signs in with their own Gmail
+// (backupEngine) or types it by hand in Settings.
+
+test('fresh installations preload the clinic branding but no doctor identity', async () => {
+  const settings = await getSettings();
+  assert.equal(settings.clinicName, 'Yashfin Dental Care');
+  assert.equal(settings.clinicLogo, '/dlogo.png');
+  assert.equal(settings.doctorName, '');
+  assert.equal(settings.doctorEmail, '');
+  assert.equal(settings.doctorPhoto, '');
+  assert.equal(settings.ownerUid, null);
+});
+
+test('the old hard-coded doctor name is scrubbed so no account is preloaded', async () => {
+  await saveSettings({
+    doctorName: 'Dr. MBR (BDS, PGT-OMS)',
+    doctorEmail: 'preset@example.com',
+    doctorPhoto: 'https://example.com/preset.png',
+    ownerUid: 'legacy-uid',
+  });
+  const settings = await getSettings();
+  assert.equal(settings.doctorName, '');
+  assert.equal(settings.doctorEmail, '');
+  assert.equal(settings.doctorPhoto, '');
+  assert.equal(settings.ownerUid, null);
+  // The clinic branding is untouched by the cleanup.
+  assert.equal(settings.clinicName, 'Yashfin Dental Care');
+  assert.equal(settings.clinicLogo, '/dlogo.png');
+});
+
+test('a doctor identity set by the signed-in Google account is preserved', async () => {
+  await saveSettings({
+    doctorName: 'Dr. Ayesha Rahman',
+    doctorEmail: 'ayesha@gmail.com',
+    doctorPhoto: 'https://example.com/ayesha.png',
+    ownerUid: 'firebase-uid-123',
+  });
+  const settings = await getSettings();
+  assert.equal(settings.doctorName, 'Dr. Ayesha Rahman');
+  assert.equal(settings.doctorEmail, 'ayesha@gmail.com');
+  assert.equal(settings.doctorPhoto, 'https://example.com/ayesha.png');
+  assert.equal(settings.ownerUid, 'firebase-uid-123');
+});
+
+test('a doctor name typed by hand is preserved even without a Google account', async () => {
+  await saveSettings({ doctorName: 'Dr. Self Typed' });
+  const settings = await getSettings();
+  assert.equal(settings.doctorName, 'Dr. Self Typed');
+  assert.equal(settings.ownerUid, null);
+});
+
+test('clearing the identity on sign-out leaves the clinic branding in place', async () => {
+  await saveSettings({
+    clinicName: 'Smile Studio',
+    doctorName: 'Dr. Ayesha Rahman',
+    doctorEmail: 'ayesha@gmail.com',
+    ownerUid: 'firebase-uid-123',
+  });
+  await saveSettings({ doctorName: '', doctorEmail: '', doctorPhoto: '', ownerUid: null });
+  const settings = await getSettings();
+  assert.equal(settings.clinicName, 'Smile Studio');
+  assert.equal(settings.clinicLogo, '/dlogo.png');
+  assert.equal(settings.doctorName, '');
+  assert.equal(settings.doctorEmail, '');
+});

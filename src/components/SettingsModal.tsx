@@ -18,6 +18,8 @@ import {
 } from 'lucide-react';
 import { ClinicSettings } from '../types';
 import {
+  DEFAULT_CLINIC_LOGO,
+  DEFAULT_CLINIC_NAME,
   exportAllDataCSV,
   exportAllDataJSON,
   logAudit,
@@ -63,8 +65,8 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
   onDataImported,
   showToast,
 }) => {
-  const [clinicName, setClinicName] = useState<string>(settings.clinicName || 'Yashfin Dental Care');
-  const [clinicLogo, setClinicLogo] = useState<string>(settings.clinicLogo || '/dlogo.png');
+  const [clinicName, setClinicName] = useState<string>(settings.clinicName || DEFAULT_CLINIC_NAME);
+  const [clinicLogo, setClinicLogo] = useState<string>(settings.clinicLogo || DEFAULT_CLINIC_LOGO);
   const [doctorName, setDoctorName] = useState<string>(settings.doctorName);
   const [currencySymbol, setCurrencySymbol] = useState<string>(settings.currencySymbol || '৳');
   const [sharePercentage, setSharePercentage] = useState<number>(settings.sharePercentage || 40);
@@ -82,8 +84,8 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
 
   // Sync state when settings prop updates
   React.useEffect(() => {
-    setClinicName(settings.clinicName || 'Yashfin Dental Care');
-    setClinicLogo(settings.clinicLogo || '/dlogo.png');
+    setClinicName(settings.clinicName || DEFAULT_CLINIC_NAME);
+    setClinicLogo(settings.clinicLogo || DEFAULT_CLINIC_LOGO);
     setDoctorName(settings.doctorName);
     setCurrencySymbol(settings.currencySymbol || '৳');
     setSharePercentage(settings.sharePercentage || 40);
@@ -117,8 +119,8 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
   };
 
   const handleResetDefaultLogo = () => {
-    setClinicLogo('/dlogo.png');
-    showToast('Reset to Default', 'Yashfin Dental Care logo restored', 'info');
+    setClinicLogo(DEFAULT_CLINIC_LOGO);
+    showToast('Reset to Default', `${DEFAULT_CLINIC_NAME} logo restored`, 'info');
   };
 
   const handleSaveProfile = async (e: React.FormEvent) => {
@@ -127,8 +129,8 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
       setIsSaving(true);
       const effectiveShare = Math.max(1, Math.min(100, Number(sharePercentage) || 40));
       const updated = await saveSettings({
-        clinicName: clinicName.trim() || 'Yashfin Dental Care',
-        clinicLogo: clinicLogo.trim() || '/dlogo.png',
+        clinicName: clinicName.trim() || DEFAULT_CLINIC_NAME,
+        clinicLogo: clinicLogo.trim() || DEFAULT_CLINIC_LOGO,
         doctorName: doctorName.trim(),
         currencySymbol: currencySymbol.trim() || '৳',
         sharePercentage: effectiveShare,
@@ -552,7 +554,7 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
                 onClick={handleResetDefaultLogo}
                 className="text-[10px] font-semibold text-indigo-600 hover:text-indigo-800 transition"
               >
-                Reset to Default (Yashfin)
+                Reset to Default
               </button>
             </div>
 
@@ -616,7 +618,7 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
                 type="text"
                 value={clinicName}
                 onChange={(e) => setClinicName(e.target.value)}
-                placeholder="Yashfin Dental Care"
+                placeholder={DEFAULT_CLINIC_NAME}
                 className="w-full px-3 py-2 rounded-xl border border-slate-200 text-xs text-slate-800 outline-none focus:border-indigo-500 font-semibold"
                 required
               />
@@ -627,10 +629,12 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
                 type="text"
                 value={doctorName}
                 onChange={(e) => setDoctorName(e.target.value)}
-                placeholder="Dr. MBR"
+                placeholder="Filled from your Google sign-in"
                 className="w-full px-3 py-2 rounded-xl border border-slate-200 text-xs text-slate-800 outline-none focus:border-indigo-500 font-semibold"
-                required
               />
+              <p className="text-[10px] text-slate-400 mt-1 leading-relaxed">
+                Left empty until you sign in with your own Gmail — no account is pre-loaded.
+              </p>
             </div>
           </div>
 

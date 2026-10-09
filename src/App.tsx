@@ -20,6 +20,7 @@ import { HistoryTab } from './components/HistoryTab';
 import { SettingsModal } from './components/SettingsModal';
 import { SettlementReceiptModal } from './components/SettlementReceiptModal';
 import { ToastContainer } from './components/Toast';
+import { AppBackground } from './components/AppBackground';
 
 const INITIAL_BACKUP_STATUS: BackupStatus = {
   phase: 'signed-out',
@@ -218,25 +219,31 @@ export default function App() {
 
   if (isLoading) {
     return (
-      <div className="min-h-screen flex items-center justify-center bg-[#F4F7FC]">
-        <div className="flex flex-col items-center gap-3">
-          <div className="relative w-16 h-16 rounded-2xl p-0.5 bg-gradient-to-tr from-indigo-500 via-sky-500 to-emerald-400 shadow-lg shadow-indigo-500/10 flex items-center justify-center animate-pulse">
-            <img
-              src="/applogo.png"
-              alt="Hisapp Launcher Logo"
-              className="w-full h-full rounded-[14px] object-contain bg-white p-1"
-            />
+      <>
+        <AppBackground />
+        <div className="relative z-0 min-h-screen flex items-center justify-center">
+          <div className="flex flex-col items-center gap-3">
+            <div className="relative w-16 h-16 rounded-2xl p-0.5 bg-gradient-to-tr from-indigo-500 via-sky-500 to-emerald-400 shadow-lg shadow-indigo-500/10 flex items-center justify-center animate-pulse">
+              <img
+                src="/applogo.png"
+                alt="Hisapp Launcher Logo"
+                className="w-full h-full rounded-[14px] object-contain bg-white p-1"
+              />
+            </div>
+            <p className="text-xs font-bold text-slate-500 tracking-wider uppercase">
+              Loading Hisapp...
+            </p>
           </div>
-          <p className="text-xs font-bold text-slate-500 tracking-wider uppercase">
-            Loading Hisapp...
-          </p>
         </div>
-      </div>
+      </>
     );
   }
 
   return (
-    <div className="min-h-screen bg-gradient-to-b from-[#F4F7FC] via-[#EBF1FA] to-[#FDFBFE] text-slate-800 flex flex-col font-sans">
+    <div className="relative z-0 min-h-screen text-slate-800 flex flex-col font-sans">
+      {/* Fixed, non-scrollable soothing gradient background (behind everything) */}
+      <AppBackground />
+
       {/* Toast Notifications */}
       <ToastContainer toasts={toasts} onDismiss={dismissToast} />
 
@@ -251,7 +258,7 @@ export default function App() {
       {/* Firebase setup banner — shown until the web config is pasted */}
       {!backupStatus.isConfigured && (
         <div className="w-full max-w-4xl mx-auto px-4 pt-3">
-          <div className="px-4 py-2.5 rounded-2xl bg-amber-50 border border-amber-200 text-[11px] text-amber-800 flex items-center gap-2">
+          <div className="ios-glass-subtle px-4 py-2.5 rounded-2xl bg-amber-50/60 border border-amber-200/70 text-[11px] text-amber-800 flex items-center gap-2">
             <span className="font-bold">Cloud backup not configured:</span>
             <span>
               paste your Firebase web app config into <code className="font-mono">src/config/firebase.ts</code> (see instructions in that file), then sign in from Settings.
