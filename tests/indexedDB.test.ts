@@ -345,8 +345,29 @@ test('fresh installations preload the clinic branding but no doctor identity', a
   assert.equal(settings.ownerUid, null);
 });
 
-test('the old hard-coded doctor name is scrubbed so no account is preloaded', async () => {
-  await saveSettings({
+// Writes a settings record the way builds before the one-time placeholder check did.
+async function writeLegacySettingsRecord(value: Record<string, unknown>): Promise<void> {
+  await getSettings(); // Creates the database and its stores, like a fresh installation.
+  const db = await new Promise<IDBDatabase>((resolve, reject) => {
+    const req = indexedDB.open('DentalIncomeTrackerDB');
+    req.onsuccess = () => resolve(req.result);
+    req.onerror = () => reject(req.error);
+  });
+  try {
+    await new Promise<void>((resolve, reject) => {
+      const tx = db.transaction('settings', 'readwrite');
+      tx.objectStore('settings').put({ key: 'app_settings', value });
+      tx.oncomplete = () => resolve();
+      tx.onerror = () => reject(tx.error);
+    });
+  } finally {
+    db.close();
+  }
+}
+
+test('the old hard-coded doctor name is scrubbed once so no account is preloaded', async () => {
+  await writeLegacySettingsRecord({
+    clinicName: 'Yashfin Dental Care',
     doctorName: 'Dr. MBR (BDS, PGT-OMS)',
     doctorEmail: 'preset@example.com',
     doctorPhoto: 'https://example.com/preset.png',
@@ -360,6 +381,67 @@ test('the old hard-coded doctor name is scrubbed so no account is preloaded', as
   // The clinic branding is untouched by the cleanup.
   assert.equal(settings.clinicName, 'Yashfin Dental Care');
   assert.equal(settings.clinicLogo, '/dlogo.png');
+});
+
+test('a placeholder-looking name typed on a fresh installation is kept', async () => {
+  await saveSettings({ doctorName: 'Dr. MBR (BDS, PGT-OMS)' });
+  assert.equal((await getSettings()).doctorName, 'Dr. MBR (BDS, PGT-OMS)');
+  await saveSettings({ sharePercentage: 45 });
+  assert.equal((await getSettings()).doctorName, 'Dr. MBR (BDS, PGT-OMS)');
+});
+
+test('a placeholder-looking name typed after the one-time cleanup is kept', async () => {
+  await writeLegacySettingsRecord({ doctorName: 'Dr. MBR (BDS, PGT-OMS)' });
+  assert.equal((await getSettings()).doctorName, '');
+  await saveSettings({ doctorName: 'Dr. MBR (BDS, PGT-OMS)' });
+  assert.equal((await getSettings()).doctorName, 'Dr. MBR (BDS, PGT-OMS)');
+});
+
+async function readRawSettingsRecord(): Promise<Record<string, any>> {
+  const db = await new Promise<IDBDatabase>((resolve, reject) => {
+    const req = indexedDB.open('DentalIncomeTrackerDB');
+    req.onsuccess = () => resolve(req.result);
+    req.onerror = () => reject(req.error);
+  });
+  try {
+    return await new Promise<Record<string, any>>((resolve, reject) => {
+      const req = db.transaction('settings', 'readonly').objectStore('settings').get('app_settings');
+      req.onsuccess = () => resolve(req.result?.value);
+      req.onerror = () => reject(req.error);
+    });
+  } finally {
+    db.close();
+  }
+}
+
+test('the one-time placeholder check changes only the identity fields in storage', async () => {
+  await writeLegacySettingsRecord({ doctorName: 'Dr. MBR (BDS, PGT-OMS)', sharePercentage: 45 });
+  await getSettings();
+  const raw = await readRawSettingsRecord();
+  assert.equal(raw.doctorName, '');
+  assert.equal(raw.sharePercentage, 45);
+  assert.equal(raw.procedures, undefined); // Defaults are not frozen into the saved record.
+  assert.equal(raw.legacyIdentityChecked, true);
+});
+
+test('restoring an older backup still clears its placeholder name', async () => {
+  await restoreAllData({
+    patientEntries: [],
+    settlements: [],
+    settings: { doctorName: 'Dr. MBR (BDS, PGT-OMS)', ownerUid: 'legacy-uid' },
+  });
+  const settings = await getSettings();
+  assert.equal(settings.doctorName, '');
+  assert.equal(settings.ownerUid, null);
+});
+
+test('restoring a backup made by this build keeps a name typed as a placeholder', async () => {
+  await restoreAllData({
+    patientEntries: [],
+    settlements: [],
+    settings: { doctorName: 'Dr. MBR (BDS, PGT-OMS)', legacyIdentityChecked: true },
+  });
+  assert.equal((await getSettings()).doctorName, 'Dr. MBR (BDS, PGT-OMS)');
 });
 
 test('a doctor identity set by the signed-in Google account is preserved', async () => {

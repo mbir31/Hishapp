@@ -57,6 +57,7 @@ export const DEFAULT_SETTINGS: ClinicSettings = {
   ledgerSpreadsheetId: null,
   procedures: DEFAULT_PROCEDURES,
   amountPresets: DEFAULT_AMOUNT_PRESETS,
+  legacyIdentityChecked: true,
 };
 
 // Open or upgrade IndexedDB
@@ -552,7 +553,10 @@ export async function executeSettlement(params: {
 
 export async function getSettings(): Promise<ClinicSettings> {
   const { store } = await getStore('settings', 'readonly');
-  return new Promise((resolve) => {
+  const { settings, migratedRecord } = await new Promise<{
+    settings: ClinicSettings;
+    migratedRecord: ClinicSettings | null;
+  }>((resolve) => {
     const req = store.get('app_settings');
     req.onsuccess = () => {
       if (req.result && req.result.value) {
@@ -565,12 +569,15 @@ export async function getSettings(): Promise<ClinicSettings> {
 
         // ── No pre-loaded account ──────────────────────────────────────
         // A doctor identity may only come from the user's own Gmail sign-in
-        // (ownerUid set) or from being typed manually in Settings. Anything
-        // matching one of the old hard-coded placeholder names is cleared so
-        // a fresh install never shows somebody else's account.
+        // (ownerUid set) or from being typed manually in Settings. Records from
+        // older builds may hold one of the old hard-coded placeholder names.
+        // That name was seeded silently, so it cannot be told apart from a
+        // typed one, and those records are checked once. Records written by
+        // this build are trusted, so a name the doctor types is always kept.
+        const needsMigration = stored.legacyIdentityChecked !== true;
         const rawDoctorName = typeof stored.doctorName === 'string' ? stored.doctorName.trim() : '';
         const isPresetDoctorName =
-          rawDoctorName !== '' && PRESET_DOCTOR_NAMES.includes(rawDoctorName);
+          needsMigration && rawDoctorName !== '' && PRESET_DOCTOR_NAMES.includes(rawDoctorName);
         const doctorName = isPresetDoctorName ? '' : rawDoctorName;
         const doctorEmail = isPresetDoctorName ? '' : stored.doctorEmail || '';
         const doctorPhoto = isPresetDoctorName ? '' : stored.doctorPhoto || '';
@@ -585,28 +592,62 @@ export async function getSettings(): Promise<ClinicSettings> {
             ? stored.amountPresets
             : DEFAULT_AMOUNT_PRESETS;
         resolve({
-          ...DEFAULT_SETTINGS,
-          ...stored,
-          clinicName,
-          clinicLogo,
-          doctorName,
-          doctorEmail,
-          doctorPhoto,
-          ownerUid,
-          procedures,
-          amountPresets,
+          settings: {
+            ...DEFAULT_SETTINGS,
+            ...stored,
+            clinicName,
+            clinicLogo,
+            doctorName,
+            doctorEmail,
+            doctorPhoto,
+            ownerUid,
+            procedures,
+            amountPresets,
+            legacyIdentityChecked: true,
+          },
+          // Only the identity fields and the flag change in storage. Everything
+          // else stays as saved, so today's defaults are not frozen into the record.
+          migratedRecord: needsMigration
+            ? {
+                ...stored,
+                doctorName,
+                doctorEmail,
+                doctorPhoto,
+                ownerUid,
+                legacyIdentityChecked: true,
+              }
+            : null,
         });
       } else {
-        resolve(DEFAULT_SETTINGS);
+        resolve({ settings: DEFAULT_SETTINGS, migratedRecord: null });
       }
     };
-    req.onerror = () => resolve(DEFAULT_SETTINGS);
+    req.onerror = () => resolve({ settings: DEFAULT_SETTINGS, migratedRecord: null });
+  });
+
+  if (migratedRecord) {
+    // Store the checked record so the placeholder rule never runs against it again.
+    await writeSettingsRecord(migratedRecord).catch((error) =>
+      console.warn('Could not save the settings check:', error)
+    );
+  }
+  return settings;
+}
+
+async function writeSettingsRecord(settings: ClinicSettings): Promise<void> {
+  const { store, tx } = await getStore('settings', 'readwrite');
+  return new Promise((resolve, reject) => {
+    store.put({ key: 'app_settings', value: settings });
+    tx.oncomplete = () => resolve();
+    tx.onerror = () => reject(tx.error);
+    tx.onabort = () => reject(tx.error);
   });
 }
 
 export async function saveSettings(settings: Partial<ClinicSettings>): Promise<ClinicSettings> {
   const current = await getSettings();
-  const updated = { ...current, ...settings };
+  // Anything saved by this build has already passed the placeholder check.
+  const updated = { ...current, ...settings, legacyIdentityChecked: true };
   const { store, tx } = await getStore('settings', 'readwrite');
   return new Promise((resolve, reject) => {
     store.put({ key: 'app_settings', value: updated });
@@ -876,6 +917,9 @@ export async function restoreAllData(payload: {
   const mergedSettings: ClinicSettings = {
     ...current,
     ...backupSettings,
+    // The placeholder check belongs to the backup's own history. An older backup
+    // must still be checked after restore, so the flag is not inherited from here.
+    legacyIdentityChecked: backupSettings.legacyIdentityChecked === true,
     lastDriveSnapshotTimestamp: current.lastDriveSnapshotTimestamp ?? null,
     driveFolderId: current.driveFolderId ?? null,
     ledgerSpreadsheetId: current.ledgerSpreadsheetId ?? null,

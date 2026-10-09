@@ -72,6 +72,12 @@ export interface ClinicSettings {
   ledgerSpreadsheetId?: string | null;
   procedures?: string[];
   amountPresets?: AmountPreset[];
+  /**
+   * Set on every settings record written by this build. Records from older
+   * builds lack it and get a one-time check that clears a legacy placeholder
+   * doctor name (see getSettings in db/indexedDB.ts).
+   */
+  legacyIdentityChecked?: boolean;
 }
 
 export interface PatientProfile {

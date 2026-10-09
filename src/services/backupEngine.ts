@@ -33,6 +33,7 @@ import {
   downloadLatestDriveBackup,
 } from './driveBackup';
 import { syncSheetsLedger } from './sheetsLedger';
+import { signOutIdentityPatch } from './identity';
 
 export type BackupPhase = 'not-configured' | 'signed-out' | 'idle' | 'syncing' | 'synced' | 'error';
 
@@ -292,13 +293,10 @@ class BackupEngine {
     let clearedIdentity = false;
     try {
       const settings = await getSettings();
-      if (settings.ownerUid && settings.ownerUid === this.user?.uid) {
-        await saveSettings({
-          doctorName: '',
-          doctorEmail: '',
-          doctorPhoto: '',
-          ownerUid: null,
-        });
+      const identityPatch = signOutIdentityPatch(settings, this.user);
+      if (identityPatch) {
+        // A Doctor Name the doctor typed after sign-in survives sign-out.
+        await saveSettings(identityPatch);
         clearedIdentity = true;
       }
     } catch (err) {
