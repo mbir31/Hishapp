@@ -261,7 +261,7 @@ export default function App() {
       )}
 
       {/* Main Content View with Tabs */}
-      <main className="flex-1 w-full max-w-4xl mx-auto px-4 pt-4 sm:pt-6">
+      <main className="flex-1 w-full max-w-4xl mx-auto px-4 pt-4 pb-36 sm:pt-6 sm:pb-40">
         {activeTab === 'dashboard' && (
           <DashboardTab
             entries={entries}
