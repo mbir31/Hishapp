@@ -2,6 +2,7 @@ import React, { useEffect, useState } from 'react';
 import { Cloud, CloudOff, RefreshCw, Settings, ShieldAlert, Wifi, WifiOff } from 'lucide-react';
 import { ClinicSettings } from '../types';
 import type { BackupStatus } from '../services/backupEngine';
+import { InstallAppButton } from './InstallAppButton';
 
 interface HeaderProps {
   settings: ClinicSettings;
@@ -101,12 +102,14 @@ export const Header: React.FC<HeaderProps> = ({
   }, [avatar]);
 
   return (
-    <header className="sticky top-0 z-40 w-full ios-glass-header px-4 py-1 sm:px-6">
-      <div className="max-w-4xl mx-auto flex items-center justify-between gap-3">
+    <header className="sticky top-0 z-40 w-full px-2.5 pt-1 pb-1 pointer-events-none">
+      {/* Header bar styled like the bottom navigation dock (same glass, rounded
+          capsule, floating inset) at its original compact height */}
+      <div className="max-w-4xl mx-auto flex items-center justify-between gap-3 rounded-[22px] ios-glass-nav px-3 py-0.5 pointer-events-auto">
         {/* Left: Clinic Logo + Doctor / Clinic Info */}
         <div className="flex items-center gap-3 min-w-0">
           {/* Logo container with subtle glass ring border */}
-          <div className="relative shrink-0 w-11 h-11 rounded-2xl bg-gradient-to-tr from-indigo-600 via-sky-500 to-emerald-400 p-[1.5px] shadow-sm shadow-indigo-500/20">
+          <div className="relative shrink-0 w-10 h-10 rounded-2xl bg-gradient-to-tr from-indigo-600 via-sky-500 to-emerald-400 p-[1.5px] shadow-sm shadow-indigo-500/20">
             <div className="w-full h-full rounded-[14px] bg-white/95 backdrop-blur-md flex items-center justify-center overflow-hidden p-0.5">
               {settings.clinicLogo ? (
                 <img
@@ -146,8 +149,11 @@ export const Header: React.FC<HeaderProps> = ({
           </div>
         </div>
 
-        {/* Right: Backup Pill, Connection Pill, Account/Settings Button */}
+        {/* Right: Install App, Backup Pill, Connection Pill, Account/Settings Button */}
         <div className="flex items-center gap-2 shrink-0">
+          {/* Dedicated one-click PWA install button */}
+          <InstallAppButton />
+
           {/* Google Drive Cloud Backup Status */}
           <BackupPill backup={backup} isOnline={isOnline} />
 
