@@ -44,6 +44,7 @@ interface SettingsModalProps {
   backup: BackupStatus;
   onSaveSettings: (settings: ClinicSettings) => void;
   onBackupSignIn: () => Promise<any>;
+  onBackupReconnectDrive: () => Promise<unknown>;
   onBackupSignOut: () => Promise<void>;
   onBackupNow: () => Promise<any>;
   onRestoreFromDrive: () => Promise<any>;
@@ -59,6 +60,7 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
   backup,
   onSaveSettings,
   onBackupSignIn,
+  onBackupReconnectDrive,
   onBackupSignOut,
   onBackupNow,
   onRestoreFromDrive,
@@ -286,7 +288,7 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
     });
 
   // Persisted snapshot timestamp is the source of truth; engine value as fallback
-  const lastBackupTs = settings.lastDriveSnapshotTimestamp ?? backup.lastBackupAt ?? null;
+  const lastBackupTs = backup.lastBackupAt ?? settings.lastDriveSnapshotTimestamp ?? null;
   const isSyncing = backup.phase === 'syncing';
 
   return (
@@ -491,10 +493,10 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
               </label>
 
               <div className="flex flex-wrap items-center gap-2 pt-1">
-                {backup.error?.includes('Google Drive access expired') && (
+                {backup.driveNeedsReconnect && (
                   <button
                     type="button"
-                    onClick={() => void onBackupSignIn()}
+                    onClick={() => void onBackupReconnectDrive()}
                     className="px-3.5 py-2 rounded-xl bg-amber-50 hover:bg-amber-100 border border-amber-200 text-amber-800 text-xs font-semibold flex items-center gap-1.5 active:scale-95 transition"
                   >
                     <LogIn className="w-3.5 h-3.5" />
@@ -539,7 +541,9 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
                 </button>
                 {backup.pendingChanges && (
                   <span className="text-[10px] font-semibold text-sky-700 bg-sky-50 border border-sky-200 px-2 py-1 rounded-full">
-                    Changes queued for cloud backup…
+                    {backup.pendingCount > 0
+                      ? `${backup.pendingCount} change${backup.pendingCount === 1 ? '' : 's'} syncing…`
+                      : 'Changes queued for Drive backup…'}
                   </span>
                 )}
               </div>

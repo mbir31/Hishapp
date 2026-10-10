@@ -319,6 +319,81 @@
   pointer-events: none;
 }
 
+/* Dark dock: semi-transparent BLACK frosted glass. Only the colour changes —
+   shape, size, padding and spacing are identical to the light dock. Scoped to
+   the dock (.bottom-nav__dock--dark) so the header keeps its white glass. */
+.bottom-nav__dock.ios-glass-nav.bottom-nav__dock--dark {
+  background-color: rgba(0, 0, 0, 0.42);
+  background-image:
+    linear-gradient(
+      155deg,
+      rgba(255, 255, 255, 0.12) 0%,
+      rgba(255, 255, 255, 0.03) 26%,
+      rgba(255, 255, 255, 0) 54%
+    ),
+    linear-gradient(
+      155deg,
+      rgba(15, 23, 42, 0.56) 0%,
+      rgba(2, 6, 23, 0.4) 48%,
+      rgba(0, 0, 0, 0.52) 100%
+    );
+  -webkit-backdrop-filter: blur(34px) saturate(180%);
+  backdrop-filter: blur(34px) saturate(180%);
+  border: 1px solid rgba(255, 255, 255, 0.14);
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.2),
+    inset 0 -1px 0 rgba(0, 0, 0, 0.3),
+    0 22px 48px -20px rgba(0, 0, 0, 0.55),
+    0 8px 20px -12px rgba(0, 0, 0, 0.35);
+}
+
+.bottom-nav__dock--dark::before {
+  background: linear-gradient(180deg, rgba(255, 255, 255, 0.14), rgba(255, 255, 255, 0));
+}
+
+.bottom-nav__dock--dark .bottom-nav__item:hover:not(.is-active) {
+  background: rgba(255, 255, 255, 0.1);
+}
+
+.bottom-nav__dock--dark .bottom-nav__item.is-active {
+  background: linear-gradient(145deg, rgba(255, 255, 255, 0.16), var(--nav-tint));
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.16),
+    0 3px 9px rgba(0, 0, 0, 0.4);
+}
+
+.bottom-nav__dock--dark .bottom-nav__icon-wrap {
+  border-color: rgba(255, 255, 255, 0.14);
+  background: linear-gradient(145deg, rgba(255, 255, 255, 0.12), var(--nav-tint));
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.16),
+    0 2px 5px rgba(0, 0, 0, 0.3);
+}
+
+.bottom-nav__dock--dark .bottom-nav__item.is-active .bottom-nav__icon-wrap {
+  border-color: rgba(255, 255, 255, 0.24);
+  background: linear-gradient(145deg, rgba(255, 255, 255, 0.22), var(--nav-tint));
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.24),
+    0 3px 7px rgba(0, 0, 0, 0.4);
+}
+
+.bottom-nav__dock--dark .bottom-nav__icon {
+  filter: drop-shadow(0 1px 1px rgba(0, 0, 0, 0.5));
+}
+
+.bottom-nav__dock--dark .bottom-nav__label {
+  color: #94a3b8;
+}
+
+.bottom-nav__dock--dark .bottom-nav__item.is-active .bottom-nav__label {
+  color: var(--nav-accent);
+}
+
+.bottom-nav__dock--dark .bottom-nav__badge {
+  border-color: rgba(15, 23, 42, 0.95);
+}
+
 .bottom-nav__item {
   --nav-accent: #3478d4;
   --nav-tint: rgba(52, 120, 212, 0.1);

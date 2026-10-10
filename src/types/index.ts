@@ -76,8 +76,13 @@ export interface ClinicSettings {
   currencySymbol: string;
   sharePercentage: number;
   autoBackup: boolean;
+  /** Timestamp of the last archived (timestamped) Drive snapshot. */
   lastDriveSnapshotTimestamp?: number | null;
+  /** Timestamp of the last successful in-place update of the Drive "latest" backup. */
+  lastDriveSyncAt?: number | null;
   driveFolderId?: string | null;
+  /** Drive file id of the always-current `Hisapp_Latest.json` backup (updated in place). */
+  driveLatestFileId?: string | null;
   ledgerSpreadsheetId?: string | null;
   procedures?: string[];
   amountPresets?: AmountPreset[];

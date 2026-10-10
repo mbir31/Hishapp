@@ -6,7 +6,7 @@ import {
   getAllSettlements,
   getSettings,
   removeLegacyDemoData,
-  savePatientEntry,
+  restorePatientEntry,
   saveSettings,
 } from './db/indexedDB';
 import { backupEngine, type BackupStatus } from './services/backupEngine';
@@ -34,6 +34,8 @@ const INITIAL_BACKUP_STATUS: BackupStatus = {
   user: null,
   lastBackupAt: null,
   pendingChanges: false,
+  pendingCount: 0,
+  driveNeedsReconnect: false,
   error: null,
 };
 
@@ -198,8 +200,8 @@ export default function App() {
           onClick: () => {
             void (async () => {
               try {
-                const restoredEntry = { ...deletedEntry, updatedAt: Date.now() };
-                await savePatientEntry(restoredEntry);
+                // Stamped after the deletion event, so sync cannot discard the undo.
+                const restoredEntry = await restorePatientEntry(deletedEntry);
                 setEntries((prev) => [restoredEntry, ...prev]);
                 backupEngine.onDataChanged();
                 showToast(
@@ -346,6 +348,7 @@ export default function App() {
           backup={backupStatus}
           onSaveSettings={handleSettingsSaved}
           onBackupSignIn={() => backupEngine.signIn()}
+          onBackupReconnectDrive={() => backupEngine.reconnectDrive()}
           onBackupSignOut={() => backupEngine.signOut()}
           onBackupNow={() => backupEngine.backupNow()}
           onRestoreFromDrive={() => backupEngine.restoreLatest()}
