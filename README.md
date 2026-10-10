@@ -2,7 +2,7 @@
 
 <img src="./applogo.png" alt="Hisapp logo" width="96" />
 
-# 🦷 Hisapp — Dental Clinic Income & Settlement Tracker
+# 🦷 HishApp — Dental Clinic Income & Settlement Tracker
 
 ### আপনার ডেন্তাল ক্লিনিকের আয়, হিস্যা ও সেটেলমেন্ট — এখন এক অ্যাপে!
 ### *The percentage-based income ledger built for dental surgeons in Bangladesh.* 🇧🇩
@@ -17,13 +17,13 @@
 
 ---
 
-## 💡 Why Hisapp? / কেন Hisapp?
+## 💡 Why HishApp? / কেন HishApp?
 
 If you are a dental surgeon working in a clinic in Bangladesh, you already know the struggle:
 
 > *"Clinic ৬০% রাখে, আমি ৪০% পাই। কিন্তু প্রতিদিন খাতায় লিখে, মাস শেষে হিসাব মেলাতে গিয়ে হিমশিম খাই। কত পেন্ডিং, কত বকেয়া — মনে থাকে না!"*
 
-**Hisapp solves exactly this.** *(Banglish: apni jodi daily patient-er bill likhen ar month-sheshe clinic-er kach theke apnar share bujhe pete chan, Hisapp apnar kaj 10x shohoj kore dibe.)*
+**HishApp solves exactly this.** *(Banglish: apni jodi daily patient-er bill likhen ar month-sheshe clinic-er kach theke apnar share bujhe pete chan, Hisapp apnar kaj 10x shohoj kore dibe.)*
 
 - ✅ **Enter a visit in ~5 seconds** — patient name, treatment, collected amount. Hisapp instantly computes **your share** (40% by default).
 - ✅ **Never lose a taka** — unpaid dues automatically **carry forward** to the next settlement. `বকেয়া আর মনে রাখতে হবে না!`
@@ -166,7 +166,7 @@ src/
 <div align="center">
 
 **Hisapp** — *হিসাব রাখুন ঝামেলামুক্ত, মন দিন চিকিৎসায়।* 💙
-Made with ❤️ for the dental surgeons of Bangladesh.
+Made with ❤️ by **Dr. Munabbir**, for the BDS Doctors of Bangladesh.
 
 [Open Hisapp →](https://hishapp1.web.app/)
 
