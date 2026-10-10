@@ -87,6 +87,13 @@ export interface ClinicSettings {
    * doctor name (see getSettings in db/indexedDB.ts).
    */
   legacyIdentityChecked?: boolean;
+  /**
+   * Set on every settings record written by this build. Records from older
+   * builds lack it and get a one-time back-fill of the "Follow-up" procedure
+   * / amount preset, so doctors who customized their lists still receive the
+   * preset — once. Deleting it afterwards stays deleted.
+   */
+  followUpPresetsChecked?: boolean;
 }
 
 export interface PatientProfile {

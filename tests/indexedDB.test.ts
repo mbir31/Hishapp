@@ -134,11 +134,66 @@ test('fresh databases have no sample records and retain all selection presets', 
   assert.equal(await getNextSerial(), 1);
   const settings = await getSettings();
   assert.deepEqual(settings.procedures, DEFAULT_PROCEDURES);
-  assert.deepEqual(settings.procedures, ['Visit', 'RCT', 'Filling', 'Scaling', 'Extraction', 'Pulpectomy', 'Crown']);
+  assert.deepEqual(settings.procedures, [
+    'Visit',
+    'RCT',
+    'Filling',
+    'Scaling',
+    'Extraction',
+    'Pulpectomy',
+    'Crown',
+    'Follow-up',
+  ]);
   assert.deepEqual(settings.amountPresets, DEFAULT_AMOUNT_PRESETS);
-  assert.deepEqual(settings.amountPresets?.map((preset) => preset.amount), [0, 0, 500, 1000, 2000, 3000, 5000]);
+  assert.deepEqual(settings.amountPresets?.map((preset) => preset.amount), [
+    0, 0, 0, 500, 1000, 2000, 3000, 5000,
+  ]);
   assert.equal(settings.amountPresets?.[0].label, 'No Payment');
   assert.equal(settings.amountPresets?.[1].label, 'Free Campaign');
+  assert.equal(settings.amountPresets?.[2].label, 'Follow-up');
+  assert.equal(settings.amountPresets?.[2].id, 'follow-up');
+});
+
+test('a customized list saved before the follow-up feature gets the preset once', async () => {
+  await writeLegacySettingsRecord({
+    procedures: ['Custom Treatment'],
+    amountPresets: [{ id: 'custom-1250', label: 'Custom Payment', amount: 1250 }],
+  });
+
+  const settings = await getSettings();
+  assert.deepEqual(settings.procedures, ['Custom Treatment', 'Follow-up']);
+  assert.deepEqual(settings.amountPresets, [
+    { id: 'follow-up', label: 'Follow-up', amount: 0 },
+    { id: 'custom-1250', label: 'Custom Payment', amount: 1250 },
+  ]);
+
+  // The back-fill is written to the record once, next to the check flag.
+  const raw = await readRawSettingsRecord();
+  assert.deepEqual(raw.procedures, ['Custom Treatment', 'Follow-up']);
+  assert.equal(raw.followUpPresetsChecked, true);
+
+  // Removing the preset afterwards is respected — the check never runs again.
+  const afterRemoval = await saveSettings({
+    procedures: ['Custom Treatment'],
+    amountPresets: [{ id: 'custom-1250', label: 'Custom Payment', amount: 1250 }],
+  });
+  assert.deepEqual(afterRemoval.procedures, ['Custom Treatment']);
+  const reloaded = await getSettings();
+  assert.deepEqual(reloaded.procedures, ['Custom Treatment']);
+  assert.deepEqual(reloaded.amountPresets, [
+    { id: 'custom-1250', label: 'Custom Payment', amount: 1250 },
+  ]);
+});
+
+test('a stored list that already has Follow-up keeps the doctor own order', async () => {
+  await writeLegacySettingsRecord({
+    procedures: ['Follow-up', 'RCT'],
+    amountPresets: [{ id: 'follow-up', label: 'Follow-up', amount: 0 }],
+  });
+
+  const settings = await getSettings();
+  assert.deepEqual(settings.procedures, ['Follow-up', 'RCT']);
+  assert.deepEqual(settings.amountPresets, [{ id: 'follow-up', label: 'Follow-up', amount: 0 }]);
 });
 
 test('cleans all old demo visits, payments and profiles without reseeding on reload', async () => {
@@ -297,7 +352,16 @@ test('restoring an old backup cannot reintroduce untouched demo records', async 
   });
   await restoreAllData(legacy);
   await assertEmptyRecords();
-  assert.deepEqual(await getSettings(), current);
+  // The legacy backup pre-dates the follow-up preset, so restoring it re-runs
+  // the one-time back-fill on the doctor's own lists (everything else is kept).
+  assert.deepEqual(await getSettings(), {
+    ...current,
+    procedures: ['Custom Treatment', 'Follow-up'],
+    amountPresets: [
+      { id: 'follow-up', label: 'Follow-up', amount: 0 },
+      { id: 'custom-1250', label: 'Custom Payment', amount: 1250 },
+    ],
+  });
 
   await restoreAllData({
     patientEntries: [...legacy.patientEntries, realEntry],
