@@ -359,6 +359,9 @@ export default function App() {
           backup={backupStatus}
           onSaveSettings={handleSettingsSaved}
           onVaultLogin={(phone, pin) => backupEngine.login(phone, pin)}
+          onVaultBiometricLogin={(phone) => backupEngine.loginWithBiometrics(phone)}
+          onVaultEnableBiometric={() => backupEngine.enableBiometrics()}
+          onVaultResetPinBiometric={(phone, newPin) => backupEngine.resetPinWithBiometrics(phone, newPin)}
           onVaultSignOut={() => backupEngine.signOut()}
           onVaultChangePin={(oldPin, newPin) => backupEngine.changePin(oldPin, newPin)}
           onBackupNow={() => backupEngine.backupNow()}

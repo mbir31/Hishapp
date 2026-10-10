@@ -19,6 +19,13 @@ import {
   type VaultSession,
 } from './vaultAuth';
 import {
+  isBiometricAvailable,
+  isBiometricEnrolledFor,
+  loginWithBiometric,
+  registerBiometric,
+  resetPinWithBiometric,
+} from './biometricAuth';
+import {
   connectFirestoreSync,
   type FirestoreSyncSession,
 } from './firestoreSync';
@@ -204,6 +211,77 @@ class BackupEngine {
       this.error = err.message || 'Login failed';
       this.emit();
       throw err;
+    }
+  }
+
+  /**
+   * Log into cloud vault using device biometrics (Fingerprint / Face ID).
+   */
+  async loginWithBiometrics(phone: string): Promise<VaultSession> {
+    this.phase = 'syncing';
+    this.error = null;
+    this.emit();
+
+    try {
+      const session = await loginWithBiometric(phone);
+      this.user = { phoneNumber: session.phoneNumber };
+
+      await activateLedgerOwner(session.phoneNumber);
+      this.pendingCount = await countOutbox(session.phoneNumber);
+
+      if (this.syncSession) {
+        this.syncSession.close();
+      }
+
+      this.syncSession = connectFirestoreSync(session.phoneNumber, {
+        onRemoteData: () => {
+          this.emit();
+          this.onRemoteDataChangedCb?.();
+        },
+        onSynced: (pending) => {
+          this.pendingCount = pending;
+          this.lastBackupAt = Date.now();
+          this.phase = pending > 0 ? 'syncing' : 'synced';
+          this.error = null;
+          this.emit();
+        },
+        onError: (err) => {
+          this.error = err.message || 'Firestore sync issue';
+          this.phase = 'error';
+          this.emit();
+        },
+      });
+
+      await this.syncSession.flush();
+      this.phase = 'synced';
+      this.emit();
+      return session;
+    } catch (err: any) {
+      this.user = null;
+      this.phase = 'signed-out';
+      this.error = err.message || 'Biometric login failed';
+      this.emit();
+      throw err;
+    }
+  }
+
+  /**
+   * Enable/register biometrics for the logged-in vault user
+   */
+  async enableBiometrics(): Promise<boolean> {
+    if (!this.user) {
+      throw new Error('Please log in first.');
+    }
+    return await registerBiometric(this.user.phoneNumber);
+  }
+
+  /**
+   * Reset PIN using Biometric verification
+   */
+  async resetPinWithBiometrics(phone: string, newPin: string): Promise<void> {
+    await resetPinWithBiometric(phone, newPin);
+    if (this.user && this.user.phoneNumber === phone) {
+      this.emit();
     }
   }
 

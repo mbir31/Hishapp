@@ -63,6 +63,26 @@ const COLLECTIONS: Record<SyncKind, string> = {
 const BATCH_SIZE = 50;
 
 /**
+ * Recursively remove `undefined` values so Firestore set/batch operations never reject.
+ */
+export function cleanForFirestore<T>(data: T): T {
+  if (data === null || data === undefined) return null as T;
+  if (Array.isArray(data)) {
+    return data.map((item) => cleanForFirestore(item)) as T;
+  }
+  if (typeof data === 'object') {
+    const res: Record<string, unknown> = {};
+    for (const [key, value] of Object.entries(data as Record<string, unknown>)) {
+      if (value !== undefined) {
+        res[key] = cleanForFirestore(value);
+      }
+    }
+    return res as T;
+  }
+  return data;
+}
+
+/**
  * Connect to Firestore for the given user's vault.
  */
 export function connectFirestoreSync(
@@ -222,7 +242,7 @@ export function connectFirestoreSync(
 
           if (record) {
             // Document created or updated
-            batch.set(docRef, record, { merge: true });
+            batch.set(docRef, cleanForFirestore(record), { merge: true });
           } else {
             // Document was deleted locally
             batch.delete(docRef);

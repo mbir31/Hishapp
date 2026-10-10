@@ -13,6 +13,18 @@ interface HeaderProps {
   onSyncNow: () => void;
 }
 
+function formatRelativeTime(ts: number | null): string {
+  if (!ts) return 'Never';
+  const diffSec = Math.max(0, Math.floor((Date.now() - ts) / 1000));
+  if (diffSec < 60) return `${diffSec}s ago`;
+  const diffMin = Math.floor(diffSec / 60);
+  if (diffMin < 60) return `${diffMin}m ago`;
+  const diffHour = Math.floor(diffMin / 60);
+  if (diffHour < 24) return `${diffHour}h ago`;
+  const diffDay = Math.floor(diffHour / 24);
+  return `${diffDay}d ago`;
+}
+
 function BackupPill({
   backup,
   isOnline,
@@ -118,6 +130,16 @@ export const Header: React.FC<HeaderProps> = ({
   onOpenSettings,
   onSyncNow,
 }) => {
+  const [, setNow] = useState<number>(Date.now());
+
+  // Tick every second so "4s ago", "5s ago" updates smoothly
+  useEffect(() => {
+    const timer = setInterval(() => {
+      setNow(Date.now());
+    }, 1000);
+    return () => clearInterval(timer);
+  }, []);
+
   const displayName = settings.doctorName?.trim() || (backup.user ? `Dr. (${backup.user.phoneNumber.slice(-4)})` : '');
 
   return (
@@ -179,14 +201,11 @@ export const Header: React.FC<HeaderProps> = ({
           </div>
         </div>
 
-        {/* Right: Install App, Backup Pill, Connection Pill, Account/Settings Button */}
+        {/* Right: Install App, Backup Pill, Last Sync Text, Online Pill, Settings Button */}
         <div className="flex items-center gap-2 shrink-0">
           <InstallAppButton />
 
-          {/* Cloud Firestore Vault Status */}
-          <BackupPill backup={backup} isOnline={isOnline} onSyncNow={onSyncNow} />
-
-          {/* Online/Offline Status Pill */}
+          {/* Live Online/Offline Status Pill */}
           <div
             className={`hidden sm:flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-medium border backdrop-blur-md transition-colors ${
               isOnline
@@ -201,6 +220,22 @@ export const Header: React.FC<HeaderProps> = ({
               <WifiOff className="w-3.5 h-3.5 text-rose-600" />
             )}
             <span>{isOnline ? 'Online' : 'Offline'}</span>
+          </div>
+
+          {/* Cloud Firestore Vault Status */}
+          <BackupPill backup={backup} isOnline={isOnline} onSyncNow={onSyncNow} />
+
+          {/* Last Sync Indicator (Positioned between Cloud Sync and Settings Button) */}
+          <div
+            className="flex flex-col items-center justify-center px-1 py-0.5 leading-tight shrink-0 select-none text-center"
+            title={backup.lastBackupAt ? `Latest cloud backup: ${new Date(backup.lastBackupAt).toLocaleString()}` : 'No cloud backup yet'}
+          >
+            <span className="text-[8.5px] font-bold uppercase tracking-wider text-slate-400">
+              Last Sync
+            </span>
+            <span className="text-[10px] font-extrabold text-indigo-600 mt-0.5 font-mono">
+              {formatRelativeTime(backup.lastBackupAt)}
+            </span>
           </div>
 
           {/* Settings / Vault Button */}

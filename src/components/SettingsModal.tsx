@@ -1,4 +1,4 @@
-import React, { useRef, useState } from 'react';
+import React, { useRef, useState, useEffect } from 'react';
 import {
   X,
   CloudUpload,
@@ -11,12 +11,12 @@ import {
   LogOut,
   Loader2,
   AlertTriangle,
-  CheckCircle2,
   Clock,
   ShieldCheck,
   KeyRound,
   Smartphone,
   Lock,
+  Fingerprint,
 } from 'lucide-react';
 import { ClinicSettings } from '../types';
 import {
@@ -38,6 +38,11 @@ import type { BackupStatus } from '../services/backupEngine';
 import { usePWAInstall } from '../hooks/usePWAInstall';
 import { AuditLogModal } from './AuditLogModal';
 import { todayDateKey } from '../utils/dateUtils';
+import {
+  isBiometricAvailable,
+  isBiometricEnrolledFor,
+  removeBiometricEnrollment,
+} from '../services/biometricAuth';
 
 interface SettingsModalProps {
   isOpen: boolean;
@@ -46,6 +51,9 @@ interface SettingsModalProps {
   backup: BackupStatus;
   onSaveSettings: (settings: ClinicSettings) => void;
   onVaultLogin: (phone: string, pin: string) => Promise<any>;
+  onVaultBiometricLogin: (phone: string) => Promise<any>;
+  onVaultEnableBiometric: () => Promise<boolean>;
+  onVaultResetPinBiometric: (phone: string, newPin: string) => Promise<void>;
   onVaultSignOut: () => Promise<void>;
   onVaultChangePin: (oldPin: string, newPin: string) => Promise<void>;
   onBackupNow: () => Promise<any>;
@@ -61,6 +69,9 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
   backup,
   onSaveSettings,
   onVaultLogin,
+  onVaultBiometricLogin,
+  onVaultEnableBiometric,
+  onVaultResetPinBiometric,
   onVaultSignOut,
   onVaultChangePin,
   onBackupNow,
@@ -81,6 +92,18 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
   const [phoneInput, setPhoneInput] = useState<string>('');
   const [pinInput, setPinInput] = useState<string>('');
   const [isLoggingIn, setIsLoggingIn] = useState<boolean>(false);
+  const [rememberPhone, setRememberPhone] = useState<boolean>(() => {
+    try {
+      return localStorage.getItem('hisapp_remember_phone') !== 'false';
+    } catch {
+      return true;
+    }
+  });
+
+  // Biometric state
+  const [hasBiometricSupport, setHasBiometricSupport] = useState<boolean>(false);
+  const [isBiometricEnrolled, setIsBiometricEnrolled] = useState<boolean>(false);
+  const [isBiometricLoading, setIsBiometricLoading] = useState<boolean>(false);
 
   // Change PIN state
   const [showChangePin, setShowChangePin] = useState<boolean>(false);
@@ -97,8 +120,27 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
 
   const { isInstallable, isInstalled, isIOS, install } = usePWAInstall();
 
+  // Load saved phone if remembered
+  useEffect(() => {
+    isBiometricAvailable().then(setHasBiometricSupport);
+    try {
+      const savedPhone = localStorage.getItem('hisapp_saved_phone');
+      if (savedPhone) {
+        setPhoneInput(savedPhone);
+      }
+    } catch {
+      // ignore storage error
+    }
+  }, []);
+
+  // Sync biometric enrollment status for current target phone
+  useEffect(() => {
+    const target = backup.user?.phoneNumber || phoneInput.replace(/\D/g, '');
+    setIsBiometricEnrolled(isBiometricEnrolledFor(target));
+  }, [backup.user, phoneInput]);
+
   // Sync state when settings prop updates
-  React.useEffect(() => {
+  useEffect(() => {
     setClinicName(settings.clinicName || DEFAULT_CLINIC_NAME);
     setClinicLogo(settings.clinicLogo || DEFAULT_CLINIC_LOGO);
     setDoctorName(settings.doctorName);
@@ -124,17 +166,68 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
     setIsLoggingIn(true);
     try {
       const session = await onVaultLogin(cleanPhone, cleanPin);
+
+      // Handle remember phone preference
+      if (rememberPhone) {
+        localStorage.setItem('hisapp_saved_phone', cleanPhone);
+        localStorage.setItem('hisapp_remember_phone', 'true');
+      } else {
+        localStorage.removeItem('hisapp_saved_phone');
+        localStorage.setItem('hisapp_remember_phone', 'false');
+      }
+
       showToast(
         session.isNew ? 'নতুন ক্লাউড ভল্ট তৈরি হয়েছে!' : 'ক্লাউড ভল্ট আনলক হয়েছে!',
         `মোবাইল নম্বর: ${cleanPhone}`,
         'success'
       );
-      setPhoneInput('');
       setPinInput('');
     } catch (err: any) {
       showToast('ভল্ট এরর', err?.message || 'লগইন ব্যর্থ হয়েছে', 'error');
     } finally {
       setIsLoggingIn(false);
+    }
+  };
+
+  const handleBiometricLogin = async () => {
+    const cleanPhone = (phoneInput || backup.user?.phoneNumber || '').replace(/\D/g, '').trim();
+    if (cleanPhone.length !== 11) {
+      showToast('মোবাইল নম্বর প্রয়োজন', 'বায়োমেট্রিক লগইনের জন্য ১১ ডিজিটের নম্বর দিন', 'warning');
+      return;
+    }
+
+    setIsBiometricLoading(true);
+    try {
+      await onVaultBiometricLogin(cleanPhone);
+      if (rememberPhone) {
+        localStorage.setItem('hisapp_saved_phone', cleanPhone);
+      }
+      showToast('বায়োমেট্রিক লগইন সফল!', `ভল্ট আইডি: ${cleanPhone}`, 'success');
+      setPinInput('');
+    } catch (err: any) {
+      showToast('বায়োমেট্রিক সমস্যা', err?.message || 'যাচাই ব্যর্থ হয়েছে', 'error');
+    } finally {
+      setIsBiometricLoading(false);
+    }
+  };
+
+  const handleToggleBiometric = async () => {
+    if (!backup.user) return;
+    setIsBiometricLoading(true);
+    try {
+      if (isBiometricEnrolled) {
+        removeBiometricEnrollment(backup.user.phoneNumber);
+        setIsBiometricEnrolled(false);
+        showToast('বায়োমেট্রিক বন্ধ করা হয়েছে', 'এই ডিভাইসের ফিঙ্গারপ্রিন্ট সংযোগ বিচ্ছিন্ন হয়েছে', 'info');
+      } else {
+        await onVaultEnableBiometric();
+        setIsBiometricEnrolled(true);
+        showToast('বায়োমেট্রিক সক্রিয় হয়েছে!', 'এখন থেকে ফিঙ্গারপ্রিন্ট বা ফেস আইডি দিয়ে এক ক্লিকে লগইন করা যাবে', 'success');
+      }
+    } catch (err: any) {
+      showToast('বায়োমেট্রিক ত্রুটি', err?.message || 'সেটআপ ব্যর্থ হয়েছে', 'error');
+    } finally {
+      setIsBiometricLoading(false);
     }
   };
 
@@ -163,6 +256,32 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
       setConfirmPinInput('');
     } catch (err: any) {
       showToast('পিন পরিবর্তন ব্যর্থ', err?.message || 'অনুগ্রহ করে সঠিক বর্তমান পিন দিন', 'error');
+    } finally {
+      setIsSavingPin(false);
+    }
+  };
+
+  const handleBiometricPinReset = async () => {
+    if (!backup.user) return;
+    if (newPinInput.trim().length !== 4) {
+      showToast('নতুন পিন দিন', 'নতুন পিন অবশ্যই ৪ ডিজিটের হতে হবে', 'warning');
+      return;
+    }
+    if (newPinInput.trim() !== confirmPinInput.trim()) {
+      showToast('পিন মিলেনি', 'নতুন পিন এবং নিশ্চিতকরণ পিন একই হতে হবে', 'warning');
+      return;
+    }
+
+    setIsSavingPin(true);
+    try {
+      await onVaultResetPinBiometric(backup.user.phoneNumber, newPinInput.trim());
+      showToast('পিন পরিবর্তিত হয়েছে!', 'বায়োমেট্রিক যাচাইয়ের মাধ্যমে নতুন ৪-ডিজিট পিন সংরক্ষিত হয়েছে', 'success');
+      setShowChangePin(false);
+      setOldPinInput('');
+      setNewPinInput('');
+      setConfirmPinInput('');
+    } catch (err: any) {
+      showToast('পিন রিসেট ব্যর্থ', err?.message || 'বায়োমেট্রিক যাচাই হয়নি', 'error');
     } finally {
       setIsSavingPin(false);
     }
@@ -442,29 +561,59 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
                 </div>
               </div>
 
+              {/* Remember Mobile Number Checkbox */}
+              <label className="flex items-center gap-2 cursor-pointer select-none text-[11px] text-slate-700 font-medium">
+                <input
+                  type="checkbox"
+                  checked={rememberPhone}
+                  onChange={(e) => setRememberPhone(e.target.checked)}
+                  className="w-4 h-4 rounded text-indigo-600 focus:ring-indigo-500 border-slate-300 accent-indigo-600"
+                />
+                <span>মোবাইল নম্বর মনে রাখুন (Remember mobile number on this device)</span>
+              </label>
+
               {backup.error && (
                 <p className="text-[11px] text-rose-700 bg-rose-50 border border-rose-200 rounded-xl px-3 py-1.5">
                   {backup.error}
                 </p>
               )}
 
-              <button
-                type="submit"
-                disabled={isLoggingIn}
-                className="btn-gradient w-full py-2.5 rounded-xl text-white text-xs font-bold flex items-center justify-center gap-1.5 disabled:opacity-60 shadow-sm"
-              >
-                {isLoggingIn ? (
-                  <>
-                    <Loader2 className="w-3.5 h-3.5 animate-spin" />
-                    <span>ভল্ট খোলা হচ্ছে...</span>
-                  </>
-                ) : (
-                  <>
-                    <LogIn className="w-3.5 h-3.5" />
-                    <span>লগইন / নতুন ভল্ট তৈরি করুন</span>
-                  </>
+              <div className="flex flex-col gap-2 pt-0.5">
+                <button
+                  type="submit"
+                  disabled={isLoggingIn}
+                  className="btn-gradient w-full py-2.5 rounded-xl text-white text-xs font-bold flex items-center justify-center gap-1.5 disabled:opacity-60 shadow-sm"
+                >
+                  {isLoggingIn ? (
+                    <>
+                      <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                      <span>ভল্ট খোলা হচ্ছে...</span>
+                    </>
+                  ) : (
+                    <>
+                      <LogIn className="w-3.5 h-3.5" />
+                      <span>লগইন / নতুন ভল্ট তৈরি করুন</span>
+                    </>
+                  )}
+                </button>
+
+                {/* Biometric One-Tap Login Button (if enrolled for this phone on device) */}
+                {hasBiometricSupport && isBiometricEnrolled && (
+                  <button
+                    type="button"
+                    onClick={handleBiometricLogin}
+                    disabled={isBiometricLoading}
+                    className="w-full py-2.5 rounded-xl bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-700 hover:to-teal-700 text-white text-xs font-bold flex items-center justify-center gap-2 shadow-sm transition active:scale-95 disabled:opacity-60"
+                  >
+                    {isBiometricLoading ? (
+                      <Loader2 className="w-4 h-4 animate-spin" />
+                    ) : (
+                      <Fingerprint className="w-4 h-4" />
+                    )}
+                    <span>বায়োমেট্রিক দিয়ে এক ক্লিকে লগইন (Fingerprint / Face ID)</span>
+                  </button>
                 )}
-              </button>
+              </div>
             </form>
           ) : (
             /* Active Vault Info & Actions */
@@ -496,6 +645,44 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
                   Sign Out
                 </button>
               </div>
+
+              {/* Biometric Integration Card */}
+              {hasBiometricSupport && (
+                <div className="p-3 rounded-xl bg-white border border-slate-200 flex items-center justify-between gap-2 shadow-2xs">
+                  <div className="flex items-center gap-2.5 min-w-0">
+                    <div className={`p-2 rounded-xl shrink-0 ${isBiometricEnrolled ? 'bg-emerald-50 text-emerald-600' : 'bg-slate-100 text-slate-500'}`}>
+                      <Fingerprint className="w-4 h-4" />
+                    </div>
+                    <div className="min-w-0">
+                      <p className="text-xs font-bold text-slate-900 truncate">ডিভাইস বায়োমেট্রিক আনলক</p>
+                      <p className="text-[10px] text-slate-500 truncate">
+                        {isBiometricEnrolled
+                          ? 'ফিঙ্গারপ্রিন্ট / ফেস আইডি সক্রিয় আছে'
+                          : 'PIN ছাড়াই দ্রুত আনলকের জন্য সক্রিয় করুন'}
+                      </p>
+                    </div>
+                  </div>
+
+                  <button
+                    type="button"
+                    onClick={handleToggleBiometric}
+                    disabled={isBiometricLoading}
+                    className={`px-3 py-1.5 rounded-xl text-xs font-bold active:scale-95 transition shrink-0 ${
+                      isBiometricEnrolled
+                        ? 'bg-rose-50 text-rose-700 hover:bg-rose-100 border border-rose-200'
+                        : 'btn-gradient btn-gradient--emerald text-white'
+                    }`}
+                  >
+                    {isBiometricLoading ? (
+                      <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                    ) : isBiometricEnrolled ? (
+                      'বন্ধ করুন'
+                    ) : (
+                      'চালু করুন'
+                    )}
+                  </button>
+                </div>
+              )}
 
               {backup.error && (
                 <p className="text-[11px] text-rose-700 bg-rose-50 border border-rose-200 rounded-xl px-3 py-1.5">
@@ -535,12 +722,19 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
               {showChangePin && (
                 <form
                   onSubmit={handleChangePin}
-                  className="p-3.5 rounded-xl bg-white border border-indigo-200 space-y-2.5 shadow-xs"
+                  className="p-3.5 rounded-xl bg-white border border-indigo-200 space-y-3 shadow-xs"
                 >
-                  <h5 className="text-xs font-bold text-slate-900 flex items-center gap-1.5">
-                    <KeyRound className="w-3.5 h-3.5 text-indigo-600" />
-                    গোপন PIN পরিবর্তন করুন
-                  </h5>
+                  <div className="flex items-center justify-between">
+                    <h5 className="text-xs font-bold text-slate-900 flex items-center gap-1.5">
+                      <KeyRound className="w-3.5 h-3.5 text-indigo-600" />
+                      গোপন PIN পরিবর্তন করুন
+                    </h5>
+                    {isBiometricEnrolled && (
+                      <span className="text-[10px] font-bold text-emerald-700 bg-emerald-50 px-2 py-0.5 rounded-full border border-emerald-200">
+                        বায়োমেট্রিক প্রস্তুত
+                      </span>
+                    )}
+                  </div>
 
                   <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
                     <div>
@@ -553,9 +747,9 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
                         maxLength={4}
                         value={oldPinInput}
                         onChange={(e) => setOldPinInput(e.target.value.replace(/\D/g, ''))}
-                        placeholder="••••"
+                        placeholder={isBiometricEnrolled ? 'ঐচ্ছিক (বায়োমেট্রিক ছাড়া)' : '••••'}
                         className="w-full px-2.5 py-1.5 rounded-lg border border-slate-300 text-xs text-center font-bold outline-none focus:border-indigo-500"
-                        required
+                        required={!isBiometricEnrolled}
                       />
                     </div>
                     <div>
@@ -590,7 +784,7 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
                     </div>
                   </div>
 
-                  <div className="flex justify-end gap-2 pt-1">
+                  <div className="flex flex-wrap items-center justify-end gap-2 pt-1 border-t border-slate-100">
                     <button
                       type="button"
                       onClick={() => setShowChangePin(false)}
@@ -598,12 +792,27 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
                     >
                       বাতিল
                     </button>
+
+                    {/* Biometric PIN Reset button if biometrics is enrolled */}
+                    {isBiometricEnrolled && (
+                      <button
+                        type="button"
+                        onClick={handleBiometricPinReset}
+                        disabled={isSavingPin}
+                        className="px-3 py-1.5 rounded-lg bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-bold flex items-center gap-1.5 disabled:opacity-60 shadow-xs active:scale-95 transition"
+                        title="বর্তমান পিন ছাড়াই ফিঙ্গারপ্রিন্ট দিয়ে নতুন পিন সেট করুন"
+                      >
+                        <Fingerprint className="w-3.5 h-3.5" />
+                        <span>বায়োমেট্রিক দিয়ে পিন বদলান</span>
+                      </button>
+                    )}
+
                     <button
                       type="submit"
                       disabled={isSavingPin}
                       className="btn-gradient px-3 py-1.5 rounded-lg text-xs font-bold text-white disabled:opacity-60"
                     >
-                      {isSavingPin ? 'সংরক্ষণ হচ্ছে...' : 'নতুন PIN সেভ করুন'}
+                      {isSavingPin ? 'সংরক্ষণ হচ্ছে...' : 'বর্তমান PIN দিয়ে সেভ করুন'}
                     </button>
                   </div>
                 </form>
