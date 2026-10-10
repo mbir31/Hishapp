@@ -7,6 +7,7 @@
  * strings are painted, so the wording can be unit-tested in Node.
  */
 import { ClinicSettings, Settlement } from '../types';
+import { displayDateKey, weekdayNameDateKey } from './dateUtils';
 
 export type StatementEmphasis = 'normal' | 'highlight' | 'total' | 'due';
 
@@ -53,18 +54,11 @@ export function formatStatementAmount(currencySymbol: string, amount: number): s
   return `${currencySymbol} ${new Intl.NumberFormat('en-BD').format(Math.round(safe))}`;
 }
 
-/** `Fri, 10 Oct 2026` — or the raw key when it cannot be parsed. */
+/** `Friday 09-10-2026` — or the raw key when it cannot be parsed. */
 function readableDate(key: string): string {
-  const match = /^(\d{4})-(\d{2})-(\d{2})$/.exec(key || '');
-  if (!match) return key || '—';
-  const parsed = new Date(Number(match[1]), Number(match[2]) - 1, Number(match[3]));
-  if (Number.isNaN(parsed.getTime())) return key || '—';
-  return parsed.toLocaleDateString('en-GB', {
-    weekday: 'short',
-    day: '2-digit',
-    month: 'short',
-    year: 'numeric',
-  });
+  const weekday = weekdayNameDateKey(key);
+  const formatted = displayDateKey(key);
+  return weekday && formatted ? `${weekday} ${formatted}` : key || '—';
 }
 
 export interface BuildStatementOptions {

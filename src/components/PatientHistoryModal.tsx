@@ -1,6 +1,7 @@
 import React from 'react';
 import { X, Calendar, User, Clock, CheckCircle2, AlertCircle, FileText, Activity } from 'lucide-react';
 import { PatientEntry } from '../types';
+import { displayDateKey, weekdayNameDateKey } from '../utils/dateUtils';
 
 interface PatientHistoryModalProps {
   isOpen: boolean;
@@ -101,7 +102,9 @@ export const PatientHistoryModal: React.FC<PatientHistoryModalProps> = ({
                 <div className="p-3.5 rounded-2xl bg-slate-50 border border-slate-200/80 space-y-2">
                   <div className="flex items-center justify-between text-xs">
                     <div className="flex items-center gap-1.5">
-                      <span className="font-bold text-slate-900">{entry.date}</span>
+                      <span className="font-bold text-slate-900">
+                        {weekdayNameDateKey(entry.date)} {displayDateKey(entry.date)}
+                      </span>
                       <span className="text-[10px] text-slate-400">#{entry.serial}</span>
                     </div>
                     <span

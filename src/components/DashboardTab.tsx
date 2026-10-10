@@ -15,6 +15,7 @@ import {
   Medal,
 } from 'lucide-react';
 import { ClinicSettings, PatientEntry, Settlement, TabType } from '../types';
+import { displayDateKey, formatDateKey, todayDateKey, weekdayNameDateKey } from '../utils/dateUtils';
 
 interface DashboardTabProps {
   entries: PatientEntry[];
@@ -33,7 +34,7 @@ export const DashboardTab: React.FC<DashboardTabProps> = ({
 
   // Metrics computation
   const metrics = useMemo(() => {
-    const todayStr = new Date().toISOString().split('T')[0];
+    const todayStr = todayDateKey();
     const currentMonthPrefix = todayStr.substring(0, 7); // YYYY-MM
 
     // Today metrics
@@ -113,8 +114,8 @@ export const DashboardTab: React.FC<DashboardTabProps> = ({
   // ── Earnings trend (7 / 30 day) ──────────────────────────────────
   const [trendDays, setTrendDays] = useState<7 | 30>(7);
 
-  // Same UTC-based date convention used when entries are saved
-  const fmtDate = (d: Date) => d.toISOString().split('T')[0];
+  // Build date keys in local time, matching how entries are stored.
+  const fmtDate = formatDateKey;
 
   const dailySeries = useMemo(() => {
     const series: { date: string; label: string; share: number; gross: number; count: number }[] = [];
@@ -128,8 +129,8 @@ export const DashboardTab: React.FC<DashboardTabProps> = ({
         date: dateStr,
         label:
           trendDays === 7
-            ? d.toLocaleDateString('en-BD', { weekday: 'short' })
-            : d.toLocaleDateString('en-BD', { day: 'numeric', month: 'short' }),
+            ? d.toLocaleDateString('en-US', { weekday: 'short' })
+            : d.toLocaleDateString('en-US', { day: 'numeric', month: 'short' }),
         share: dayEntries.reduce((sum, e) => sum + e.doctorShare, 0),
         gross: dayEntries.reduce((sum, e) => sum + e.receivedAmount, 0),
         count: dayEntries.length,
@@ -408,7 +409,7 @@ export const DashboardTab: React.FC<DashboardTabProps> = ({
                   return (
                     <g key={d.date}>
                       <title>
-                        {`${d.date} — ${currency} ${formatNumber(d.share)} share · ${d.count} patient${d.count === 1 ? '' : 's'} · gross ${currency} ${formatNumber(d.gross)}`}
+                        {`${weekdayNameDateKey(d.date)} ${displayDateKey(d.date)} — ${currency} ${formatNumber(d.share)} share · ${d.count} patient${d.count === 1 ? '' : 's'} · gross ${currency} ${formatNumber(d.gross)}`}
                       </title>
                       <rect
                         x={6 + i * 20 + 5}
@@ -599,7 +600,7 @@ export const DashboardTab: React.FC<DashboardTabProps> = ({
                           </span>
                         </div>
                         <p className="text-[11px] text-slate-500 truncate mt-0.5">
-                          {entry.procedure} • {entry.date}
+                          {entry.procedure} • {weekdayNameDateKey(entry.date)} {displayDateKey(entry.date)}
                         </p>
                       </div>
 

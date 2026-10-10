@@ -22,6 +22,7 @@ export interface HisappUser {
 interface CachedToken {
   accessToken: string;
   expiresAt: number;
+  userUid?: string;
 }
 
 async function buildProvider() {
@@ -61,20 +62,30 @@ function mapUser(user: { uid: string; displayName: string | null; email: string 
 
 // ── Access-token cache (localStorage) ────────────────────────────────
 
-function readCachedToken(): CachedToken | null {
+function readCachedToken(expectedUid?: string): CachedToken | null {
   try {
     const raw = localStorage.getItem(TOKEN_CACHE_KEY);
     if (!raw) return null;
     const parsed = JSON.parse(raw) as CachedToken;
-    if (parsed.accessToken && parsed.expiresAt > Date.now()) return parsed;
+    if (
+      parsed.accessToken &&
+      parsed.expiresAt > Date.now() &&
+      (!expectedUid || parsed.userUid === expectedUid)
+    ) {
+      return parsed;
+    }
   } catch {
     // corrupted cache — ignore
   }
   return null;
 }
 
-function writeCachedToken(accessToken: string): void {
-  const cached: CachedToken = { accessToken, expiresAt: Date.now() + TOKEN_TTL_MS };
+function writeCachedToken(accessToken: string, userUid: string): void {
+  const cached: CachedToken = {
+    accessToken,
+    expiresAt: Date.now() + TOKEN_TTL_MS,
+    userUid,
+  };
   localStorage.setItem(TOKEN_CACHE_KEY, JSON.stringify(cached));
 }
 
@@ -88,8 +99,8 @@ export function clearCachedToken(): void {
  * Returns a valid Google Drive-scoped access token, or null when the user
  * is signed out or the cached token has expired (never opens a popup).
  */
-export function getSilentGoogleToken(): string | null {
-  return readCachedToken()?.accessToken ?? null;
+export function getSilentGoogleToken(expectedUid?: string): string | null {
+  return readCachedToken(expectedUid)?.accessToken ?? null;
 }
 
 /**
@@ -112,8 +123,9 @@ export async function signInWithGoogle(): Promise<{ user: HisappUser; accessToke
         'Google did not return a Drive access token. Make sure the Google sign-in provider is enabled in Firebase Authentication.'
       );
     }
-    writeCachedToken(accessToken);
-    return { user: mapUser(result.user), accessToken };
+    const user = mapUser(result.user);
+    writeCachedToken(accessToken, user.uid);
+    return { user, accessToken };
   } catch (err: any) {
     throw new Error(friendlyAuthError(err));
   }
@@ -124,10 +136,13 @@ export async function signInWithGoogle(): Promise<{ user: HisappUser; accessToke
  * cached one has expired. Call this from user-gesture handlers (buttons)
  * so the browser allows the popup.
  */
-export async function ensureGoogleToken(): Promise<string> {
-  const cached = readCachedToken();
+export async function ensureGoogleToken(expectedUid?: string): Promise<string> {
+  const cached = readCachedToken(expectedUid);
   if (cached) return cached.accessToken;
-  const { accessToken } = await signInWithGoogle();
+  const { user, accessToken } = await signInWithGoogle();
+  if (expectedUid && user.uid !== expectedUid) {
+    throw new Error('Google sign-in switched to a different account. Please try again with the intended account.');
+  }
   return accessToken;
 }
 

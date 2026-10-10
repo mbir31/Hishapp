@@ -35,6 +35,7 @@ import {
 import type { BackupStatus } from '../services/backupEngine';
 import { usePWAInstall } from '../hooks/usePWAInstall';
 import { AuditLogModal } from './AuditLogModal';
+import { todayDateKey } from '../utils/dateUtils';
 
 interface SettingsModalProps {
   isOpen: boolean;
@@ -159,7 +160,7 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
   const handleExportJSON = async () => {
     try {
       const json = await exportAllDataJSON();
-      const dateStr = new Date().toISOString().split('T')[0];
+      const dateStr = todayDateKey();
       downloadFile(json, `dental_income_tracker_backup_${dateStr}.json`, 'application/json');
       showToast('JSON Export Complete', 'All patient visits & settlements saved to disk', 'success');
     } catch (err: any) {
@@ -170,7 +171,7 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
   const handleExportCSV = async () => {
     try {
       const { patientEntriesCSV, settlementsCSV } = await exportAllDataCSV();
-      const dateStr = new Date().toISOString().split('T')[0];
+      const dateStr = todayDateKey();
       downloadFile(
         patientEntriesCSV,
         `Patient_Entries_${dateStr}.csv`,
@@ -236,7 +237,7 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
       // Safety net: download a snapshot of the CURRENT data before replacing it
       try {
         const json = await exportAllDataJSON();
-        const dateStr = new Date().toISOString().split('T')[0];
+        const dateStr = todayDateKey();
         downloadFile(
           json,
           `dental_income_tracker_before_import_${dateStr}.json`,
@@ -316,7 +317,7 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
             <div className="flex items-center gap-2">
               <CloudUpload className="w-4 h-4 text-sky-600" />
               <h4 className="text-xs font-bold text-slate-900 uppercase tracking-wider">
-                Account &amp; Google Drive Backup
+                Account &amp; Cloud Sync
               </h4>
             </div>
             <span
@@ -361,7 +362,7 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
                     </p>
                     <p className="text-[10.5px] text-slate-500 truncate">
                       {isSyncing
-                        ? 'Backing up to Google Drive…'
+                        ? 'Syncing records and saving a Drive backup…'
                         : lastBackupTs
                         ? formatBackupTime(lastBackupTs)
                         : 'No cloud backup yet — tap "Backup to Drive Now" below'}
@@ -416,10 +417,10 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
           ) : !backup.user ? (
             <>
               <p className="text-xs text-slate-600 leading-relaxed">
-                Sign in with your own Gmail account. Every entry is saved on this device
-                (IndexedDB) <span className="font-semibold">and</span> backed up to your personal
-                Google Drive in a private <span className="font-semibold">Hisapp_Backups/</span>{' '}
-                folder — only Hisapp can read its own files there.
+                Sign in with your own Gmail account. Entries stay saved on this device
+                (IndexedDB), sync live to your account across devices, and are also backed up to
+                your personal Google Drive in a private <span className="font-semibold">Hisapp_Backups/</span>{' '}
+                folder.
               </p>
               <button
                 type="button"
@@ -468,7 +469,7 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
                 <div>
                   <p className="text-xs font-bold text-slate-900">Automatic Cloud Backup</p>
                   <p className="text-[11px] text-slate-500">
-                    Simultaneously back up to Google Drive after every change.
+                    Live-sync records across signed-in devices and save Drive snapshots after changes.
                   </p>
                 </div>
                 <button
@@ -490,6 +491,16 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
               </label>
 
               <div className="flex flex-wrap items-center gap-2 pt-1">
+                {backup.error?.includes('Google Drive access expired') && (
+                  <button
+                    type="button"
+                    onClick={() => void onBackupSignIn()}
+                    className="px-3.5 py-2 rounded-xl bg-amber-50 hover:bg-amber-100 border border-amber-200 text-amber-800 text-xs font-semibold flex items-center gap-1.5 active:scale-95 transition"
+                  >
+                    <LogIn className="w-3.5 h-3.5" />
+                    <span>Reconnect Google Drive</span>
+                  </button>
+                )}
                 <button
                   type="button"
                   onClick={() => onBackupNow()}
@@ -497,7 +508,7 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
                   className="btn-gradient btn-gradient--sky px-3.5 py-2 rounded-xl text-white text-xs font-semibold flex items-center gap-1.5 disabled:opacity-60"
                 >
                   <CloudUpload className={`w-3.5 h-3.5 ${backup.phase === 'syncing' ? 'animate-pulse' : ''}`} />
-                  <span>{backup.phase === 'syncing' ? 'Backing Up...' : 'Backup to Drive Now'}</span>
+                  <span>{backup.phase === 'syncing' ? 'Syncing...' : 'Sync & Back Up Now'}</span>
                 </button>
                 {settings.ledgerSpreadsheetId && (
                   <a

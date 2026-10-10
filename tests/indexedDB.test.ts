@@ -15,6 +15,7 @@ import {
   getAllSettlements,
   getNextSerial,
   getSettings,
+  mergeRemoteSyncData,
   removeLegacyDemoData,
   restoreAllData,
   savePatientEntry,
@@ -127,6 +128,32 @@ async function assertEmptyRecords(): Promise<void> {
   assert.deepEqual(await getAllPatientProfiles(), []);
   assert.deepEqual(await getAllAuditLogs(), []);
 }
+
+test('remote live-sync snapshots merge ledger records and patient profiles into IndexedDB', async () => {
+  await getSettings();
+  const changed = await mergeRemoteSyncData({
+    patientEntries: [realEntry],
+    settlements: [realSettlement],
+    patientProfiles: [realProfile],
+    auditLogs: [realAudit],
+  });
+
+  assert.equal(changed, true);
+  assert.deepEqual(await getAllPatientEntries(), [realEntry]);
+  assert.deepEqual(await getAllSettlements(), [realSettlement]);
+  assert.deepEqual(await getAllAuditLogs(), [realAudit]);
+  const [profile] = await getAllPatientProfiles();
+  assert.equal(profile.id, realProfile.id);
+  assert.equal(profile.phone, realProfile.phone);
+  assert.equal(profile.notes, realProfile.notes);
+  assert.equal(profile.totalVisits, 1);
+  assert.equal(await mergeRemoteSyncData({
+    patientEntries: [realEntry],
+    settlements: [realSettlement],
+    patientProfiles: [realProfile],
+    auditLogs: [realAudit],
+  }), false);
+});
 
 test('fresh databases have no sample records and retain all selection presets', async () => {
   assert.equal(await removeLegacyDemoData(), false);

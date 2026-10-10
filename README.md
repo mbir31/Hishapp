@@ -27,7 +27,7 @@ If you are a dental surgeon working in a clinic in Bangladesh, you already know 
 
 - ✅ **Enter a visit in ~5 seconds** — patient name, treatment, collected amount. Hisapp instantly computes **your share** (40% by default).
 - ✅ **Never lose a taka** — unpaid dues automatically **carry forward** to the next settlement. `বকেয়া আর মনে রাখতে হবে না!`
-- ✅ **Works 100% offline** — data lives safely on your phone (IndexedDB) and backs up to *your own* Google Drive when you're online.
+- ✅ **Works offline, syncs live online** — data is stored locally in IndexedDB, merged across your signed-in devices through Firebase Realtime Database, and archived in *your own* Google Drive.
 - ✅ **One-tap formal statements** — export any settlement as a clean **JPG image** or a formatted **monthly PDF** to send to the clinic owner on WhatsApp.
 
 No cloud account is forced on you, no data leaves your device unless *you* sign in with your own Gmail.
@@ -40,14 +40,14 @@ No cloud account is forced on you, no data leaves your device unless *you* sign 
 |---|---|---|
 | 📥 **Rapid Entry** | Patient + procedure + amount with smart suggestions & duplicate guard | রোগীর নাম লিখলেই আগের ভিজিট সাজেশন আসে |
 | 🔢 **Auto share calculation** | Live doctor's share (default 40%) & clinic retention | টাকা দিলেই আপনার হিস্যা সাথে সাথে দেখায় |
-| 📅 **Date stepper** | ◀ ▶ arrows beside the date to jump a day back/forward | তীর ছুঁয়ে আগের/পরের দিনে যান |
+| 📅 **Date selector** | Glass date strip, one-day arrows, Today/Yesterday shortcuts, and a custom calendar modal | তারিখ বাছাইয়ের সহজ পপ-আপ |
 | 🔁 **Follow-up preset** | One tap sets procedure = Follow-up and amount = ৳0 | ফলো-আপ ভিজিটে টাকা ০ বসে যায় |
-| 📒 **Records & profiles** | Searchable ledger + per-patient history, edit/delete with audit trail | রোগীর পুরনো হিস্ট্রি এক ট্যাপে |
+| 📒 **Records & profiles** | Searchable ledger, selected-day filtering, per-patient history, edit/delete with audit trail | রোগীর পুরনো হিস্ট্রি এক ট্যাপে |
 | 💰 **Carry-forward settlement** | Batch-settle pending visits; dues roll over automatically | বকেয়া পরের সেটেলমেন্টে চলে যায় |
 | 🖼️ **JPG statement export** | Formal settlement image for WhatsApp / printing | সেটেলমেন্টের ছবি এক ট্যাপে ডাউনলোড |
 | 📄 **Monthly PDF report** | Formatted summary with share, volume & outstanding due | মাসিক অফিসিয়াল রিপোর্ট PDF |
 | 📊 **Dashboard** | Earnings trend, procedure breakdown, recent records | মাসের আয়ের গ্রাফ |
-| ☁️ **Gmail + Drive backup** | Automatic, encrypted-to-you backup in `Hisapp_Backups/` | ফোন বদলালেও ডেটা হারাবে না |
+| ☁️ **Live cloud sync + Drive backup** | Authenticated, per-account Firebase sync across devices plus recovery snapshots in `Hisapp_Backups/` | ফোন বদলালেও ডেটা হারাবে না |
 | 📶 **Offline-first PWA** | Installs to home screen, runs with zero internet | ইন্টারনেট ছাড়াই চলে |
 
 ---
@@ -81,20 +81,21 @@ https://hishapp1.web.app/
 ### ধাপ ৩ — নিজের Gmail দিয়ে সাইন ইন করুন
 1. অ্যাপ খুলে উপরের ডান কোনায় **⚙️ Settings** এ ট্যাপ করুন।
 2. **"Sign in with Google (Gmail)"** বাটনে ট্যাপ করে **নিজের Gmail অ্যাকাউন্ট** বাছুন।
-3. ব্যস! এখন থেকে আপনার সব ডেটা স্বয়ংক্রিয়ভাবে **আপনার নিজের Google Drive**-এর `Hisapp_Backups/` ফোল্ডারে ব্যাকআপ হবে। ☁️
+3. ব্যস! এখন থেকে আপনার এন্ট্রি একই Gmail-এ সাইন-ইন করা ডিভাইসগুলোতে **লাইভ সিঙ্ক** হবে এবং রিকভারি ব্যাকআপ আপনার Google Drive-এর `Hisapp_Backups/` ফোল্ডারেও যাবে। ☁️
 
 > 🔒 **গোপনীয়তা:** Hisapp শুধু আপনার Drive-এর নিজস্ব ব্যাকআপ ফোল্ডারটি দেখতে পায় — আপনার অন্য কোনো ফাইল নয়। আপনার Gmail-ই আপনার অ্যাকাউন্ট; আলাদা কোনো পাসওয়ার্ড লাগে না।
 
 ### ধাপ ৪ — ব্যবহার শুরু করুন! 🎉
 
 **📥 Entry ট্যাব — প্রতিদিনের ভিজিট লিখুন**
-1. **Visit Date** পাশের **◀ ▶ তীর** ছুঁয়ে সঠিক দিন বাছুন (অথবা Today / Y'day)।
+1. উপরের তারিখের গ্লাস পিল থেকে সঠিক দিন বাছুন — আগের/পরের দিনের তীর, Today/Yesterday শর্টকাট, অথবা কাস্টম ক্যালেন্ডার ব্যবহার করুন।
 2. **Patient Name** লিখুন — আগের রোগী হলে নাম সাজেশন আসবে, ট্যাপ করে অটো-ফিল করুন।
 3. **Dental Procedure** বাছুন (RCT, Filling, Scaling…) অথবা **Follow-up** — Follow-up বাছলে **Received Amount নিজে থেকেই ৳0** বসবে।
 4. **Received Amount** দিন — চাইলে প্রিসেট বাটন (+৫০০, +১০০০…) বা **No Payment / Free Campaign / Follow-up (৳0)** ছুঁন।
 5. **Save Record** চাপুন — নিচে সাথে সাথে আপনার **৪০% হিস্যা** দেখাবে। ✅
 
 **📒 Records ট্যাব — সব হিসাব এক জায়গায়**
+- তারিখের পিল থেকে একটি দিন বেছে সেই দিনের রেকর্ড দেখুন, অথবা **All Dates** চাপুন।
 - রোগীর নাম লিখে সার্চ করুন, যেকোনো রেকর্ড **Edit/Delete** করুন (ভুলে মুছে ফেললে **Undo** আছে!)।
 - প্রতিটি রোগীর মোট ভিজিট, মোট বিল ও আপনার মোট হিস্যা দেখুন।
 
@@ -138,7 +139,7 @@ npm run lint       # type-check (tsc --noEmit)
 npm run build      # production build
 ```
 
-**Cloud backup config:** paste your Firebase web-app config into `src/config/firebase.ts` (instructions are inside that file) to enable Gmail sign-in + Google Drive backup. The app runs fully offline without it.
+**Cloud sync config:** `src/config/firebase.ts` contains the Firebase web-app and Realtime Database configuration. Sign-in enables per-account live sync for visits, settlements, audit history, and patient profiles; concurrent device writes are merged by stable record ID. `database.rules.json` restricts each account to its own UID path. The GitHub deployment workflow deploys these rules and Firebase Hosting. Google Drive remains the recovery-backup archive, and the app remains usable offline.
 
 **Deploy:** push to GitHub — `.github/workflows/firebase-deploy.yml` deploys to Firebase Hosting (`hishapp1.web.app`) automatically.
 
@@ -156,8 +157,8 @@ src/
 
 ## ❓ FAQ / সচরাচর জিজ্ঞাসা
 
-- **ইন্টারনেট ছাড়া কি চলবে?** হ্যাঁ! পুরো অ্যাপ offline-first; ইন্টারনেট এলে Drive-এ ব্যাকআপ হয়।
-- **আমার ডেটা কি কেউ দেখতে পারবে?** না — ডেটা আপনার ফোনে ও আপনার নিজের Drive-এ থাকে।
+- **ইন্টারনেট ছাড়া কি চলবে?** হ্যাঁ! এন্ট্রি ডিভাইসে সেভ থাকে; ইন্টারনেট ফিরলে একই অ্যাকাউন্টের ডিভাইসগুলোর সাথে সিঙ্ক হয় এবং Drive-এ ব্যাকআপ যায়।
+- **আমার ডেটা কি কেউ দেখতে পারবে?** ডেটা আপনার ফোনে থাকে; লাইভ সিঙ্কটি আপনার Firebase UID-র অধীনে সুরক্ষিত, আর ব্যাকআপ আপনার নিজের Drive-এ থাকে।
 - **হিস্যার % বদলানো যাবে?** হ্যাঁ, Settings-এ share percentage ও currency বদলানো যায়।
 - **ভুলে রেকর্ড মুছে ফেললে?** Undo বাটন আছে, আর Audit Trail-এ সব পরিবর্তনের ইতিহাস থাকে।
 

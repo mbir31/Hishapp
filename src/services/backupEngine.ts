@@ -5,23 +5,21 @@
  *
  *   1. LOCAL (simultaneous): every entry/settlement write already goes
  *      straight into IndexedDB (durable browser database).
- *   2. CLOUD: after every local change this engine schedules a debounced
- *      Google Drive backup to the signed-in user's OWN Drive, plus a
- *      weekly safety snapshot.
+ *   2. CLOUD: after every local change the engine merges the ledger into the
+ *      signed-in user's Firebase Realtime Database for live multi-device
+ *      sync, then writes a debounced Google Drive recovery snapshot.
  *
- * SIGN-IN IS CLOUD-FIRST: whenever an account signs in, its latest Google
- * Drive backup is pulled and takes priority over this device's local cache
- * (see cloudSync.ts). A different Gmail account signing in on the same
- * device therefore gets ITS OWN cloud data — the previous account's cached
- * records are never shown to it nor backed up into it.
+ * SIGN-IN RECONCILIATION: legacy Drive snapshots are merged or restored on
+ * sign-in, then the account-scoped Realtime Database becomes the live source.
+ * A different Gmail account never receives another account's local records.
  *
  * UI subscribes to `status` to show live backup state.
  */
 import {
   clearAllPatientData,
-  getAllPatientEntries,
-  getAllSettlements,
+  mergeRemoteSyncData,
   getSettings,
+  getSyncLedgerData,
   restoreAllData,
   saveSettings,
 } from '../db/indexedDB';
@@ -41,9 +39,10 @@ import {
   type DriveBackupMeta,
   type DriveBackupPayload,
 } from './driveBackup';
-import { decideSignInSync } from './cloudSync';
+import { decideSignInSync, isSyncLedgerDataEmpty } from './cloudSync';
 import { syncSheetsLedger } from './sheetsLedger';
 import { signOutIdentityPatch } from './identity';
+import { connectRealtimeSync, type RealtimeSyncSession } from './realtimeSync';
 
 export type BackupPhase = 'not-configured' | 'signed-out' | 'idle' | 'syncing' | 'synced' | 'error';
 
@@ -64,7 +63,13 @@ const AUTO_BACKUP_DEBOUNCE_MS = 3500;
 class BackupEngine {
   private listeners = new Set<Listener>();
   private debounceTimer: ReturnType<typeof setTimeout> | null = null;
+  private realtimeSyncTimer: ReturnType<typeof setTimeout> | null = null;
   private backupInFlight: Promise<void> | null = null;
+  private realtimeSession: RealtimeSyncSession | null = null;
+  private realtimeStartPromise: Promise<void> | null = null;
+  private realtimeUserUid: string | null = null;
+  private realtimeError: string | null = null;
+  private dataChangeVersion = 0;
   private pendingChanges = false;
   private user: HisappUser | null = null;
   private lastBackupAt: number | null = null;
@@ -72,6 +77,7 @@ class BackupEngine {
   private phase: BackupPhase = 'signed-out';
   private started = false;
   private onRestoredCb: (() => void) | null = null;
+  private signedInFlow: Promise<void> | null = null;
   private onToastCb: ((title: string, desc?: string, type?: 'success' | 'info' | 'warning' | 'error') => void) | null = null;
 
   // ── Lifecycle ────────────────────────────────────────────────────
@@ -95,6 +101,10 @@ class BackupEngine {
         this.emit();
         await this.handleSignedIn(previousUser);
       } else {
+        this.realtimeSession?.close();
+        this.realtimeSession = null;
+        this.realtimeUserUid = null;
+        this.realtimeError = null;
         // No account signed in (fresh load signed out, or the session ended):
         // scrub any residual account identity out of the local settings cache
         // so a previously signed-in Gmail photo is never shown again.
@@ -110,13 +120,19 @@ class BackupEngine {
     return () => {
       window.removeEventListener('online', this.handleOnline);
       unsubscribeAuth();
+      if (this.debounceTimer) clearTimeout(this.debounceTimer);
+      if (this.realtimeSyncTimer) clearTimeout(this.realtimeSyncTimer);
+      this.realtimeSession?.close();
+      this.realtimeSession = null;
+      this.realtimeUserUid = null;
       this.started = false;
     };
   }
 
   private handleOnline = () => {
-    if (this.pendingChanges && this.user) {
-      this.scheduleAutoBackup(500);
+    if (this.user) {
+      this.scheduleRealtimeSync(0);
+      if (this.pendingChanges) this.scheduleAutoBackup(500);
     }
     this.emit();
   };
@@ -143,6 +159,31 @@ class BackupEngine {
   }
 
   private async handleSignedIn(previousUser: HisappUser | null): Promise<void> {
+    if (this.signedInFlow) {
+      const ongoingFlow = this.signedInFlow;
+      await ongoingFlow;
+      if (this.signedInFlow === ongoingFlow) return;
+      if (!this.realtimeSession && this.user && getSilentGoogleToken(this.user.uid)) {
+        await this.handleSignedIn(this.user);
+      }
+      return;
+    }
+
+    const flow = this.performSignedIn(previousUser);
+    this.signedInFlow = flow;
+    try {
+      await flow;
+    } finally {
+      if (this.signedInFlow === flow) this.signedInFlow = null;
+    }
+  }
+
+  private async performSignedIn(previousUser: HisappUser | null): Promise<void> {
+    const signingInUser = this.user;
+    if (!signingInUser) return;
+    if (this.backupInFlight) await this.backupInFlight.catch(() => {});
+    if (this.user?.uid !== signingInUser.uid) return;
+
     try {
       // Personalize the clinic profile from the user's own Gmail account.
       // Hisapp ships with NO pre-filled doctor / account identity, so the
@@ -152,37 +193,36 @@ class BackupEngine {
       const identityIsAutoFilled = !!settings.ownerUid || !!settings.doctorEmail;
       if (!identityIsAutoFilled && !settings.doctorName.trim()) {
         await saveSettings({
-          doctorName: this.user!.name,
-          doctorEmail: this.user!.email,
-          doctorPhoto: this.user!.photoURL || settings.doctorPhoto || '',
-          ownerUid: this.user!.uid,
+          doctorName: signingInUser.name,
+          doctorEmail: signingInUser.email,
+          doctorPhoto: signingInUser.photoURL || settings.doctorPhoto || '',
+          ownerUid: signingInUser.uid,
         });
         this.onRestoredCb?.(); // let the app refresh settings UI
-      } else if (settings.ownerUid && settings.ownerUid !== this.user!.uid) {
+      } else if (settings.ownerUid && settings.ownerUid !== signingInUser.uid) {
         // A different Google account signed in on this device — follow it,
         // but never clobber a Doctor Name the doctor typed in Settings: that
         // field is what the header displays.
         await saveSettings({
-          doctorName: settings.doctorName.trim() || this.user!.name,
-          doctorEmail: this.user!.email,
-          doctorPhoto: this.user!.photoURL || '',
-          ownerUid: this.user!.uid,
+          doctorName: settings.doctorName.trim() || signingInUser.name,
+          doctorEmail: signingInUser.email,
+          doctorPhoto: signingInUser.photoURL || '',
+          ownerUid: signingInUser.uid,
         });
         this.onRestoredCb?.();
       }
 
-      // ── Cloud-first sync: the signing-in account's Google Drive backup
-      // takes priority over this device's local browser cache ────────────
-      // The latest backup is pulled FIRST and reconciled with the local
-      // cache (see reconcileCloudWithLocal). When a different Gmail account
-      // signs in on this device (logout → login as another account), its own
-      // Drive backup replaces the previous account's cached records — the
-      // local cache never rules over the cloud backup.
+      if (this.user?.uid !== signingInUser.uid) return;
+
+      // Import a legacy Drive snapshot first. Live cross-device changes use
+      // the authenticated Realtime Database listener started below; same-
+      // account data is merged by record rather than replacing offline edits.
       let cloudSyncFailed = false;
-      const token = getSilentGoogleToken();
+      const token = getSilentGoogleToken(signingInUser.uid);
       if (token) {
         try {
           const latest = await downloadLatestDriveBackup(token);
+          if (this.user?.uid !== signingInUser.uid) return;
           await this.reconcileCloudWithLocal(latest, previousUser);
         } catch (syncErr: any) {
           cloudSyncFailed = true;
@@ -196,26 +236,63 @@ class BackupEngine {
       }
 
       // Safety guard: never upload the local cache into a DIFFERENT account's
-      // Drive. If an account switch was detected but the cloud sync could not
-      // finish, the cache still holds the previous account's records — hold
-      // the weekly/pending pushes until the next successful sync.
-      const postSyncSettings = await getSettings();
+      // cloud path. If a switch cannot be verified against Drive, isolate the
+      // prior account's local data before opening the new user's RTDB session.
+      let [postSyncSettings, localSyncData] = await Promise.all([getSettings(), getSyncLedgerData()]);
+      if (this.user?.uid !== signingInUser.uid) return;
       const cacheStillBelongsToPreviousAccount =
-        !!postSyncSettings.dataOwnerUid && postSyncSettings.dataOwnerUid !== this.user!.uid;
-      const switchSyncIncomplete =
-        cloudSyncFailed &&
-        ((!!previousUser && previousUser.uid !== this.user!.uid) || cacheStillBelongsToPreviousAccount);
-      if (switchSyncIncomplete) {
+        !!postSyncSettings.dataOwnerUid && postSyncSettings.dataOwnerUid !== signingInUser.uid;
+      const accountChangedThisSession = !!previousUser && previousUser.uid !== signingInUser.uid;
+      const hasDriveToken = !!getSilentGoogleToken(signingInUser.uid);
+      const unclaimedCacheFromPreviousSession =
+        !postSyncSettings.dataOwnerUid &&
+        accountChangedThisSession &&
+        !isSyncLedgerDataEmpty(localSyncData);
+      const accountSwitchWasNotVerified =
+        (cacheStillBelongsToPreviousAccount || unclaimedCacheFromPreviousSession) &&
+        (cloudSyncFailed || !hasDriveToken);
+
+      if (accountSwitchWasNotVerified) {
+        // Never leave the previous account's clinical data visible to the new
+        // account when Drive cannot be checked. Its own cloud copy remains
+        // untouched; the newly authenticated user's RTDB data is loaded next.
+        if (!isSyncLedgerDataEmpty(localSyncData)) await clearAllPatientData();
+        await saveSettings({ dataOwnerUid: signingInUser.uid, lastDriveSnapshotTimestamp: null });
+        this.onRestoredCb?.();
         this.onToastCb?.(
-          'Cloud Sync Unavailable',
-          'Could not reach Google Drive to sync this account. Local data was left untouched — it will sync on the next sign-in.',
+          'Previous Account Data Isolated',
+          'This device was switched to a different Gmail account. Previous records were hidden here and were not sent to the new account.',
+          'warning'
+        );
+        [postSyncSettings, localSyncData] = await Promise.all([getSettings(), getSyncLedgerData()]);
+      }
+
+      const localDatasetIsUnclaimed =
+        !postSyncSettings.dataOwnerUid && !isSyncLedgerDataEmpty(localSyncData);
+      if (localDatasetIsUnclaimed && (cloudSyncFailed || !hasDriveToken)) {
+        this.onToastCb?.(
+          'Account Sync Needs Verification',
+          'Local records were not sent to the cloud. Reconnect Google Drive from Settings before syncing this unclaimed data.',
           'warning'
         );
         return;
       }
 
+      // A brand-new, empty cache is safe to associate even if the user has not
+      // authorized the Drive archive yet. Never claim an untagged non-empty
+      // cache until the Drive account reconciliation above has succeeded.
+      if (!postSyncSettings.dataOwnerUid && isSyncLedgerDataEmpty(localSyncData)) {
+        await saveSettings({ dataOwnerUid: signingInUser.uid });
+      }
+
+      // Realtime Database is the live source for same-account devices. The
+      // initial snapshot is merged with local records before we schedule any
+      // Drive safety snapshot, preventing stale devices from replacing newer
+      // entries.
+      await this.startRealtimeSync(signingInUser.uid);
+
       // Weekly safety snapshot (runs at most once every 7 days)
-      const freshToken = getSilentGoogleToken();
+      const freshToken = getSilentGoogleToken(signingInUser.uid);
       if (freshToken) {
         const didRun = await checkAndRunWeeklyAutoBackup(freshToken);
         if (didRun) {
@@ -224,7 +301,7 @@ class BackupEngine {
           } catch (ledgerErr) {
             console.warn('Weekly ledger sync notice:', ledgerErr);
           }
-          this.syncLastBackupTime();
+          await this.syncLastBackupTime();
           this.onToastCb?.(
             'Weekly Backup Saved',
             'A safety snapshot was archived to Hisapp_Backups on Google Drive.',
@@ -247,17 +324,130 @@ class BackupEngine {
     }
   }
 
+  private async startRealtimeSync(userUid: string): Promise<void> {
+    if (this.realtimeSession && this.realtimeUserUid === userUid) return;
+    if (this.realtimeStartPromise) {
+      await this.realtimeStartPromise;
+      if (this.realtimeSession && this.realtimeUserUid === userUid) return;
+    }
+
+    const startup = this.openRealtimeSync(userUid);
+    this.realtimeStartPromise = startup;
+    try {
+      await startup;
+    } finally {
+      if (this.realtimeStartPromise === startup) this.realtimeStartPromise = null;
+    }
+  }
+
+  private async openRealtimeSync(userUid: string): Promise<void> {
+    if (this.realtimeSession && this.realtimeUserUid === userUid) return;
+
+    this.realtimeSession?.close();
+    this.realtimeSession = null;
+    this.realtimeUserUid = null;
+
+    try {
+      const session = await connectRealtimeSync(userUid, {
+        onRemoteData: () => {
+          this.onRestoredCb?.();
+          this.dataChangeVersion += 1;
+          this.pendingChanges = true;
+          if (this.user?.uid === userUid) this.scheduleAutoBackup();
+          this.emit();
+        },
+        onSynced: () => {
+          this.realtimeError = null;
+          this.recomputePhase();
+          this.emit();
+        },
+        onError: (error) => {
+          this.realtimeError = error.message || 'Realtime cloud sync failed';
+          this.recomputePhase();
+          this.emit();
+          console.warn('Realtime cloud sync notice:', error);
+        },
+      });
+
+      // Auth could have changed while the initial database snapshot was loading.
+      if (this.user?.uid !== userUid) {
+        session.close();
+        return;
+      }
+      this.realtimeSession = session;
+      this.realtimeUserUid = userUid;
+      this.realtimeError = null;
+      this.recomputePhase();
+      this.emit();
+    } catch (error: any) {
+      this.realtimeError = error?.message || 'Realtime cloud sync failed';
+      this.recomputePhase();
+      this.emit();
+      console.warn('Could not start Realtime Database sync:', error);
+    }
+  }
+
+  private async ensureSafeDatasetOwner(): Promise<boolean> {
+    const user = this.user;
+    if (!user) return false;
+
+    try {
+      const settings = await getSettings();
+      if (this.user?.uid !== user.uid) return false;
+      if (settings.dataOwnerUid === user.uid) return true;
+
+      const localData = await getSyncLedgerData();
+      if (this.user?.uid !== user.uid) return false;
+      if (!settings.dataOwnerUid && isSyncLedgerDataEmpty(localData)) {
+        await saveSettings({ dataOwnerUid: user.uid });
+        return this.user?.uid === user.uid;
+      }
+
+      this.realtimeError =
+        'Local records are not verified for this Google account. Reconnect Google Drive from Settings before syncing.';
+      this.recomputePhase();
+      this.emit();
+      return false;
+    } catch (error: any) {
+      this.realtimeError = error?.message || 'Could not verify the local dataset owner.';
+      this.recomputePhase();
+      this.emit();
+      return false;
+    }
+  }
+
+  private async syncRealtimeNow(): Promise<boolean> {
+    if (!this.user || !(await this.ensureSafeDatasetOwner())) return false;
+    if (!this.realtimeSession || this.realtimeUserUid !== this.user.uid) {
+      await this.startRealtimeSync(this.user.uid);
+    }
+    if (!this.realtimeSession) return false;
+
+    try {
+      await this.realtimeSession.syncNow();
+      this.realtimeError = null;
+      this.recomputePhase();
+      this.emit();
+      return true;
+    } catch (error: any) {
+      this.realtimeError = error?.message || 'Realtime cloud sync failed';
+      this.recomputePhase();
+      this.emit();
+      console.warn('Realtime cloud sync failed:', error);
+      return false;
+    }
+  }
+
   /**
-   * Cloud-first reconciliation at sign-in. The latest Drive backup of the
-   * account that just signed in is passed in; the sync policy (cloudSync.ts)
-   * decides how it interacts with this device's local cache:
+   * Reconcile a legacy Google Drive snapshot with the local browser cache.
+   * The account-switch policy isolates data; same-account records are merged
+   * before the realtime database becomes the live source of truth.
    *
-   *   • account switch  → the new account's cloud backup replaces the cache
-   *                       (or the cache is cleared when it has no backups);
-   *   • empty cache     → the cloud backup is restored (new device);
-   *   • newer cloud     → the cloud backup wins (another device synced);
-   *   • otherwise       → the local cache wins so offline edits made while
-   *                       signed out survive and are pushed right after.
+   *   • account switch  → replace or clear the cache to preserve account
+   *                       isolation;
+   *   • empty cache     → restore the Drive snapshot on a new device;
+   *   • known owner     → merge same-account records and retain offline edits;
+   *   • unclaimed cache → keep the existing privacy-first cloud precedence.
    */
   private async reconcileCloudWithLocal(
     latest: { meta: DriveBackupMeta; payload: DriveBackupPayload } | null,
@@ -267,11 +457,15 @@ class BackupEngine {
     if (!user) return;
 
     const settings = await getSettings();
-    const entries = await getAllPatientEntries();
-    const settlements = await getAllSettlements();
-    const localWasEmpty = entries.length === 0 && settlements.length === 0;
+    const localWasEmpty = isSyncLedgerDataEmpty(await getSyncLedgerData());
     const cloudHasData =
-      !!latest && !!(latest.payload.patientEntries?.length || latest.payload.settlements?.length);
+      !!latest &&
+      !isSyncLedgerDataEmpty({
+        patientEntries: latest.payload.patientEntries ?? [],
+        settlements: latest.payload.settlements ?? [],
+        auditLogs: latest.payload.auditLogs ?? [],
+        patientProfiles: latest.payload.patientProfiles ?? [],
+      });
     const cloudSnapshotAt = latest?.payload.snapshotTimestamp ?? 0;
 
     const decision = decideSignInSync({
@@ -316,6 +510,26 @@ class BackupEngine {
       return;
     }
 
+    if (decision.action === 'merge-cloud' && latest) {
+      const changed = await mergeRemoteSyncData({
+        patientEntries: latest.payload.patientEntries ?? [],
+        settlements: latest.payload.settlements ?? [],
+        auditLogs: latest.payload.auditLogs ?? [],
+        patientProfiles: latest.payload.patientProfiles ?? [],
+      });
+      await saveSettings({
+        dataOwnerUid: user.uid,
+        lastDriveSnapshotTimestamp: cloudSnapshotAt || null,
+      });
+      if (changed) this.onRestoredCb?.();
+      this.onToastCb?.(
+        'Cloud Records Merged',
+        `Merged ${latest.payload.patientEntries?.length ?? 0} visits from "${latest.meta.name}" without removing offline records.`,
+        'success'
+      );
+      return;
+    }
+
     if (decision.action === 'clear-local') {
       // A different account signed in and has no Drive backup of its own:
       // the local cache belongs to the previous account — remove it from
@@ -349,7 +563,7 @@ class BackupEngine {
       user: this.user,
       lastBackupAt: this.lastBackupAt,
       pendingChanges: this.pendingChanges,
-      error: this.error,
+      error: this.error || this.realtimeError,
     };
   }
 
@@ -370,7 +584,7 @@ class BackupEngine {
       this.phase = 'signed-out';
     } else if (this.backupInFlight) {
       this.phase = 'syncing';
-    } else if (this.error) {
+    } else if (this.error || this.realtimeError) {
       this.phase = 'error';
     } else {
       this.phase = 'idle';
@@ -395,11 +609,21 @@ class BackupEngine {
    */
   onDataChanged(): void {
     if (!this.started) return;
+    this.dataChangeVersion += 1;
     this.pendingChanges = true;
     this.emit();
     if (this.user && this.isConfigured()) {
+      this.scheduleRealtimeSync();
       this.scheduleAutoBackup();
     }
+  }
+
+  private scheduleRealtimeSync(delay = 250): void {
+    if (this.realtimeSyncTimer) clearTimeout(this.realtimeSyncTimer);
+    this.realtimeSyncTimer = setTimeout(() => {
+      this.realtimeSyncTimer = null;
+      void this.syncRealtimeNow();
+    }, delay);
   }
 
   private scheduleAutoBackup(delay = AUTO_BACKUP_DEBOUNCE_MS): void {
@@ -420,13 +644,29 @@ class BackupEngine {
       );
       return null;
     }
+    if (!this.user) {
+      this.onToastCb?.(
+        'Sign-In Required',
+        'Sign in from Settings before syncing this device with your cloud account.',
+        'warning'
+      );
+      return null;
+    }
     return (await this.runBackup('manual')) as DriveBackupOk | null;
   }
 
   async signIn(): Promise<HisappUser | null> {
     try {
       const { user } = await signInWithGoogle();
-      // onAuthChanged will fire and drive the rest of the flow
+      // Firebase may notify listeners just before the Google Drive token is
+      // cached. Re-run (or wait for) the account flow now that the token exists.
+      if (this.user?.uid === user.uid) {
+        this.error = null;
+        await this.handleSignedIn(this.user);
+        if (this.pendingChanges) this.scheduleAutoBackup(500);
+        this.recomputePhase();
+        this.emit();
+      }
       return user;
     } catch (err: any) {
       this.error = err?.message || 'Sign-in failed';
@@ -465,6 +705,14 @@ class BackupEngine {
       }
     }
 
+    // Flush the live ledger before ending the Firebase auth session.
+    await this.syncRealtimeNow();
+    this.realtimeSession?.close();
+    this.realtimeSession = null;
+    this.realtimeUserUid = null;
+    if (this.realtimeSyncTimer) clearTimeout(this.realtimeSyncTimer);
+    this.realtimeSyncTimer = null;
+
     await signOutGoogle();
     this.pendingChanges = false;
     this.error = null;
@@ -477,7 +725,13 @@ class BackupEngine {
     if (this.backupInFlight) {
       await this.backupInFlight.catch(() => {});
     }
-    if (!this.user) return null;
+    if (trigger === 'manual' && this.debounceTimer) {
+      clearTimeout(this.debounceTimer);
+      this.debounceTimer = null;
+    }
+    this.lastResult = null;
+    const runUser = this.user;
+    if (!runUser) return null;
     if (!navigator.onLine) {
       this.onToastCb?.(
         'Device Offline',
@@ -489,23 +743,52 @@ class BackupEngine {
       return null;
     }
 
+    if (!(await this.ensureSafeDatasetOwner()) || this.user?.uid !== runUser.uid) {
+      this.error = this.realtimeError || 'Local data is not verified for this account.';
+      if (trigger === 'manual') {
+        this.onToastCb?.('Account Sync Needs Verification', this.error, 'warning');
+      }
+      this.recomputePhase();
+      this.emit();
+      return null;
+    }
+
     this.error = null;
     this.recomputePhase();
     this.emit();
 
     this.backupInFlight = (async () => {
       try {
-        let token = getSilentGoogleToken();
+        // Realtime sync is independent of the Drive OAuth access token and is
+        // always attempted first, so a one-tap sync never opens a sign-in popup.
+        const realtimeSynced = await this.syncRealtimeNow();
+        if (this.user?.uid !== runUser.uid) return;
+        const token = getSilentGoogleToken(runUser.uid);
         if (!token) {
-          if (trigger === 'auto') {
-            // Never open a popup on its own for auto backups; wait for manual.
-            this.recomputePhase();
-            this.emit();
-            return;
+          this.error = 'Google Drive access expired — reconnect Drive from Settings to create a backup.';
+          if (trigger === 'manual') {
+            this.onToastCb?.(
+              realtimeSynced ? 'Records Synced Across Devices' : 'Drive Reconnection Needed',
+              realtimeSynced
+                ? 'Live cloud sync completed. Reconnect Google Drive in Settings to refresh the backup archive.'
+                : 'The Drive backup token has expired. Reconnect Google Drive from Settings to sync this device.',
+              'warning'
+            );
           }
-          token = await ensureGoogleToken();
+          this.recomputePhase();
+          this.emit();
+          return;
         }
 
+        if (this.user?.uid !== runUser.uid || !(await this.ensureSafeDatasetOwner())) {
+          this.error = this.realtimeError || 'Local data is not verified for this account.';
+          this.recomputePhase();
+          this.emit();
+          return;
+        }
+        if (this.user?.uid !== runUser.uid) return;
+
+        const snapshotVersion = this.dataChangeVersion;
         const result = await createDriveBackup(token);
         // The JSON snapshot remains the restore source; ledger errors are non-fatal.
         let ledgerNote = '';
@@ -524,7 +807,16 @@ class BackupEngine {
             );
           }
         }
-        this.pendingChanges = false;
+        if (this.dataChangeVersion === snapshotVersion) {
+          this.pendingChanges = false;
+          if (this.debounceTimer) clearTimeout(this.debounceTimer);
+          this.debounceTimer = null;
+        } else {
+          // A local or remote record changed while the Drive snapshot was
+          // uploading; leave it queued and write a fresh snapshot afterwards.
+          this.pendingChanges = true;
+          if (!this.debounceTimer) this.scheduleAutoBackup(1000);
+        }
         await this.syncLastBackupTime();
         this.recomputePhase();
         this.emit();
@@ -539,31 +831,12 @@ class BackupEngine {
         this.lastResult = result;
       } catch (err: any) {
         if (err?.message === 'SESSION_EXPIRED') {
-          // Ask for a fresh token silently-next-time; manual retry will popup.
-          this.error = 'Google session expired — tap Backup Now to reconnect.';
+          // A sync tap must never interrupt with a Google popup. Reconnection
+          // is an explicit action in Settings; Realtime Database may still have
+          // synchronized records successfully in the meantime.
+          this.error = 'Google Drive access expired — reconnect Drive from Settings.';
           if (trigger === 'manual') {
-            try {
-              const freshToken = await ensureGoogleToken();
-              const result = await createDriveBackup(freshToken);
-              let ledgerUpdated = false;
-              try {
-                await syncSheetsLedger(freshToken);
-                ledgerUpdated = true;
-              } catch (ledgerErr) {
-                console.warn('Ledger sheet sync notice:', ledgerErr);
-              }
-              this.pendingChanges = false;
-              await this.syncLastBackupTime();
-              this.error = null;
-              this.lastResult = result;
-              this.onToastCb?.(
-                'Backed Up to Google Drive!',
-                `Saved "${result.fileName}" to ${result.folderName}/${ledgerUpdated ? ' and updated Hisapp_Ledger' : ''}.`,
-                'success'
-              );
-            } catch (retryErr: any) {
-              this.error = retryErr?.message || 'Backup failed';
-            }
+            this.onToastCb?.('Drive Reconnection Needed', this.error, 'warning');
           }
         } else {
           this.error = err?.message || 'Backup failed';
@@ -597,9 +870,12 @@ class BackupEngine {
     }
     const user = this.user;
     try {
-      let token = getSilentGoogleToken();
-      if (!token) token = await ensureGoogleToken();
+      if (this.backupInFlight) await this.backupInFlight.catch(() => {});
+      if (this.user?.uid !== user.uid) return null;
+      let token = getSilentGoogleToken(user.uid);
+      if (!token) token = await ensureGoogleToken(user.uid);
       const latest = await downloadLatestDriveBackup(token);
+      if (this.user?.uid !== user.uid) return null;
       if (!latest) {
         this.onToastCb?.(
           'No Backups Found',
@@ -612,6 +888,7 @@ class BackupEngine {
       // The local cache now mirrors the signed-in account's cloud backup.
       await saveSettings({ dataOwnerUid: user.uid });
       await this.syncLastBackupTime();
+      await this.syncRealtimeNow();
       this.onRestoredCb?.();
       this.onToastCb?.(
         'Restored from Google Drive',

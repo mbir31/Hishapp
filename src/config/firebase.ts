@@ -5,9 +5,10 @@
  * Security is enforced by Firebase Authentication + authorized domains;
  * a web config is a public client identifier, not a secret.
  *
- * Requirements in the Firebase Console (already done):
+ * Requirements in the Firebase Console:
  *   • Authentication → Sign-in method → Google → Enabled
  *   • Authorized domains include hishapp1.web.app and localhost
+ *   • Realtime Database is enabled; database.rules.json restricts each user's data to auth.uid
  */
 export const firebaseConfig = {
   apiKey: 'AIzaSyC2VQdCuMe5DD5dkjH_l2AjvfV2O4xKK2M',

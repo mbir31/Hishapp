@@ -1,6 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react';
 import {
-  Calendar,
   User,
   Activity,
   Coins,
@@ -11,8 +10,6 @@ import {
   Gift,
   Clock,
   Sparkles,
-  ChevronLeft,
-  ChevronRight,
   RefreshCw,
   Edit3,
   Save,
@@ -30,7 +27,7 @@ import {
   saveSettings,
   getAllPatientProfiles,
 } from '../db/indexedDB';
-import { describeDateKey, nextDateKey, previousDateKey, todayDateKey } from '../utils/dateUtils';
+import { displayDateKey, todayDateKey, weekdayNameDateKey } from '../utils/dateUtils';
 import {
   FOLLOW_UP_PROCEDURE,
   isFollowUpAmountPreset,
@@ -38,6 +35,7 @@ import {
 } from '../utils/followUp';
 import { ProcedureManagerModal } from './ProcedureManagerModal';
 import { AmountPresetManagerModal } from './AmountPresetManagerModal';
+import { DateSelector } from './DateSelector';
 
 interface EntryTabProps {
   settings: ClinicSettings;
@@ -103,16 +101,16 @@ export const EntryTab: React.FC<EntryTabProps> = ({
     setDuplicateWarning(null);
   }, [patientName, date]);
 
-  // Today's entries shown serially on the bottom card
-  const todaysEntries = React.useMemo(() => {
+  // Entries for the currently selected visit date are shown serially below.
+  const dateEntries = React.useMemo(() => {
     return existingEntries
-      .filter((entry) => entry.date === todayStr)
+      .filter((entry) => entry.date === date)
       .sort((a, b) => a.serial - b.serial);
-  }, [existingEntries, todayStr]);
+  }, [existingEntries, date]);
 
-  const todaysTotal = React.useMemo(
-    () => todaysEntries.reduce((sum, entry) => sum + (entry.receivedAmount || 0), 0),
-    [todaysEntries]
+  const dateEntriesTotal = React.useMemo(
+    () => dateEntries.reduce((sum, entry) => sum + (entry.receivedAmount || 0), 0),
+    [dateEntries]
   );
 
   // Load profiles from IndexedDB
@@ -234,20 +232,6 @@ export const EntryTab: React.FC<EntryTabProps> = ({
         'info'
       );
     }
-  };
-
-  const handleSetQuickDate = (daysAgo: number) => {
-    const d = new Date();
-    d.setDate(d.getDate() - daysAgo);
-    setDate(todayDateKey(d));
-  };
-
-  /** Arrow buttons beside the date field: one day back (◀) or forward (▶). */
-  const handleStepDate = (direction: -1 | 1) => {
-    setDate((current) => {
-      const stepped = direction < 0 ? previousDateKey(current) : nextDateKey(current);
-      return stepped ?? current;
-    });
   };
 
   /**
@@ -444,76 +428,17 @@ export const EntryTab: React.FC<EntryTabProps> = ({
         </h2>
       </div>
 
+      {/* The date pill is centered and kept separate from the rapid-entry fields. */}
+      <div className="flex flex-col items-center gap-1.5 px-1">
+        <span className="text-[10px] font-bold uppercase tracking-wider text-slate-500">
+          Visit Date{date === todayStr ? ' · Today' : ''}
+        </span>
+        <DateSelector value={date} onChange={setDate} ariaLabel="Visit date" />
+      </div>
+
       {/* Main Frosted Entry Card - Ultra-Compact Layout */}
       <form onSubmit={handleSubmit} className="ios-glass-card rounded-2xl p-3.5 sm:p-4 space-y-2.5">
-        {/* Row 1: 2-Column Grid for Date & Patient Name */}
-        <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
-          {/* Visit Date */}
-          <div className="space-y-1">
-            <div className="flex items-center justify-between">
-              <label className="text-[11px] font-bold text-slate-700 flex items-center gap-1">
-                <Calendar className="w-3 h-3 text-indigo-600" />
-                <span>Visit Date</span>
-              </label>
-              <div className="flex items-center gap-1 text-[10px]">
-                <button
-                  type="button"
-                  onClick={() => handleSetQuickDate(0)}
-                  className={`px-1.5 py-0.5 rounded-md border font-medium transition ${
-                    date === todayStr
-                      ? 'btn-gradient border-transparent text-white'
-                      : 'bg-white text-slate-600 border-slate-200 hover:bg-slate-50'
-                  }`}
-                >
-                  Today
-                </button>
-                <button
-                  type="button"
-                  onClick={() => handleSetQuickDate(1)}
-                  className="px-1.5 py-0.5 rounded-md border bg-white text-slate-600 border-slate-200 hover:bg-slate-50 font-medium transition"
-                >
-                  Y'day
-                </button>
-              </div>
-            </div>
-            {/* Day stepper: tap ◀ / ▶ to move one day back or forward */}
-            <div className="flex items-stretch gap-1">
-              <button
-                type="button"
-                onClick={() => handleStepDate(-1)}
-                aria-label="Previous day"
-                title="Previous day"
-                className="w-8 shrink-0 rounded-xl bg-white/70 border border-white/70 text-indigo-600 flex items-center justify-center hover:bg-white active:scale-90 transition"
-              >
-                <ChevronLeft className="w-4 h-4" />
-              </button>
-
-              <input
-                type="date"
-                value={date}
-                onChange={(e) => setDate(e.target.value)}
-                aria-label={`Visit date — ${describeDateKey(date)}`}
-                className="min-w-0 flex-1 px-2 py-1.5 rounded-xl bg-white/70 border border-white/70 focus:border-indigo-500 text-slate-800 text-xs font-medium transition outline-none text-center"
-                required
-              />
-
-              <button
-                type="button"
-                onClick={() => handleStepDate(1)}
-                aria-label="Next day"
-                title="Next day"
-                className="w-8 shrink-0 rounded-xl bg-white/70 border border-white/70 text-indigo-600 flex items-center justify-center hover:bg-white active:scale-90 transition"
-              >
-                <ChevronRight className="w-4 h-4" />
-              </button>
-            </div>
-
-            <p className="text-[9.5px] font-semibold text-slate-400 leading-none pl-0.5">
-              {describeDateKey(date)}
-              {date === todayStr && <span className="text-emerald-600"> • Today</span>}
-            </p>
-          </div>
-
+        <div className="grid grid-cols-1 gap-2">
           {/* Patient Name / ID */}
           <div className="space-y-1 relative">
             <div className="flex items-center justify-between">
@@ -819,7 +744,10 @@ export const EntryTab: React.FC<EntryTabProps> = ({
                 <p className="font-bold text-amber-900">Possible duplicate entry</p>
                 <p className="text-amber-800">
                   <strong>{duplicateWarning.patientName}</strong> already has an entry on{' '}
-                  <strong>{duplicateWarning.date}</strong> — #{duplicateWarning.serial} ·{' '}
+                  <strong>
+                    {weekdayNameDateKey(duplicateWarning.date)} {displayDateKey(duplicateWarning.date)}
+                  </strong>{' '}
+                  — #{duplicateWarning.serial} ·{' '}
                   {duplicateWarning.procedure} · {currency}{' '}
                   {formatNumber(duplicateWarning.receivedAmount)}.
                 </p>
@@ -875,30 +803,32 @@ export const EntryTab: React.FC<EntryTabProps> = ({
         </div>
       </form>
 
-      {/* Today's Entries Card - serial list of entries already made today */}
+      {/* Selected-date entries card — refreshed as the visit date changes */}
       <div className="ios-glass-card rounded-2xl p-3.5 sm:p-4 space-y-2.5">
         <div className="flex items-center justify-between">
           <h3 className="text-xs sm:text-sm font-bold text-slate-700 flex items-center gap-1.5">
             <ListChecks className="w-4 h-4 text-indigo-600" />
-            <span>Today's Entries</span>
+            <span>
+              Entries of the Date {weekdayNameDateKey(date)} {displayDateKey(date)}
+            </span>
             <span className="px-1.5 py-0.5 rounded-md bg-indigo-100 text-indigo-700 text-[10px] font-bold">
-              {todaysEntries.length}
+              {dateEntries.length}
             </span>
           </h3>
-          {todaysEntries.length > 0 && (
+          {dateEntries.length > 0 && (
             <span className="text-[10px] text-slate-400 font-semibold">
-              Collected: <strong className="text-indigo-600">{currency} {formatNumber(todaysTotal)}</strong>
+              Collected: <strong className="text-indigo-600">{currency} {formatNumber(dateEntriesTotal)}</strong>
             </span>
           )}
         </div>
 
-        {todaysEntries.length === 0 ? (
+        {dateEntries.length === 0 ? (
           <p className="text-[11px] text-slate-400 text-center py-3">
-            No entries recorded yet today. Saved visits will appear here.
+            No entries recorded for this date yet. Saved visits will appear here.
           </p>
         ) : (
           <div className="divide-y divide-slate-100">
-            {todaysEntries.map((entry) => (
+            {dateEntries.map((entry) => (
               <div key={entry.id} className="flex items-center gap-2.5 py-2">
                 {/* Serial number */}
                 <span className="text-[11px] font-mono font-bold text-slate-400 bg-slate-100 px-1.5 py-0.5 rounded shrink-0">
@@ -1007,12 +937,10 @@ export const EntryTab: React.FC<EntryTabProps> = ({
 
               <div>
                 <label className="font-bold text-slate-700 block mb-1">Date</label>
-                <input
-                  type="date"
+                <DateSelector
                   value={editingEntry.date}
-                  onChange={(e) => setEditingEntry({ ...editingEntry, date: e.target.value })}
-                  className="w-full px-3 py-2 rounded-xl border border-slate-200 text-slate-800 text-xs outline-none"
-                  required
+                  onChange={(nextDate) => setEditingEntry({ ...editingEntry, date: nextDate })}
+                  ariaLabel="Edit visit date"
                 />
               </div>
 

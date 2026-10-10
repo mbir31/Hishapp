@@ -23,6 +23,7 @@ import { ClinicSettings, PatientEntry, Settlement } from '../types';
 import { deleteSettlement, executeSettlement } from '../db/indexedDB';
 import { exportSettlementAsImage } from '../utils/settlementImageExport';
 import { MonthlySummaryModal } from './MonthlySummaryModal';
+import { displayDateKey, formatDateKey, shiftDateKey, todayDateKey, weekdayNameDateKey } from '../utils/dateUtils';
 
 interface SettlementTabProps {
   entries: PatientEntry[];
@@ -42,14 +43,10 @@ export const SettlementTab: React.FC<SettlementTabProps> = ({
   showToast,
 }) => {
   const currency = settings.currencySymbol || '৳';
-  const todayStr = new Date().toISOString().split('T')[0];
+  const todayStr = todayDateKey();
 
   // Default date range: from 14 days ago to today
-  const defaultFrom = useMemo(() => {
-    const d = new Date();
-    d.setDate(d.getDate() - 14);
-    return d.toISOString().split('T')[0];
-  }, []);
+  const defaultFrom = useMemo(() => shiftDateKey(todayDateKey(), -14) || todayDateKey(), []);
 
   const [periodFrom, setPeriodFrom] = useState<string>(defaultFrom);
   const [periodTo, setPeriodTo] = useState<string>(todayStr);
@@ -97,34 +94,25 @@ export const SettlementTab: React.FC<SettlementTabProps> = ({
 
   const handleApplyPreset = (type: 'all' | 'month' | '14days' | 'week') => {
     const today = new Date();
-    const end = today.toISOString().split('T')[0];
+    const end = todayDateKey();
     setPeriodTo(end);
 
     if (type === 'all') {
-      // Find oldest pending entry or 60 days ago
+      // Find oldest pending entry or 30 days ago
       if (allPendingEntries.length > 0) {
         const oldest = allPendingEntries.reduce((prev, curr) =>
           curr.date < prev.date ? curr : prev
         );
         setPeriodFrom(oldest.date);
       } else {
-        const d = new Date();
-        d.setDate(d.getDate() - 30);
-        setPeriodFrom(d.toISOString().split('T')[0]);
+        setPeriodFrom(shiftDateKey(end, -30) || end);
       }
     } else if (type === 'month') {
-      const firstOfMonth = new Date(today.getFullYear(), today.getMonth(), 1)
-        .toISOString()
-        .split('T')[0];
-      setPeriodFrom(firstOfMonth);
+      setPeriodFrom(formatDateKey(new Date(today.getFullYear(), today.getMonth(), 1)));
     } else if (type === '14days') {
-      const d = new Date();
-      d.setDate(d.getDate() - 14);
-      setPeriodFrom(d.toISOString().split('T')[0]);
+      setPeriodFrom(shiftDateKey(end, -14) || end);
     } else if (type === 'week') {
-      const d = new Date();
-      d.setDate(d.getDate() - 7);
-      setPeriodFrom(d.toISOString().split('T')[0]);
+      setPeriodFrom(shiftDateKey(end, -7) || end);
     }
   };
 
@@ -528,7 +516,7 @@ export const SettlementTab: React.FC<SettlementTabProps> = ({
                         {s.settlementId}
                       </span>
                       <span className="text-[11px] text-slate-400 ml-2">
-                        {s.settlementDate} ({s.patientCount} patients)
+                        {weekdayNameDateKey(s.settlementDate)} {displayDateKey(s.settlementDate)} ({s.patientCount} patients)
                       </span>
                     </div>
 
