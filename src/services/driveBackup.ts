@@ -1,12 +1,19 @@
 /**
  * HISAPP — GOOGLE DRIVE CLOUD BACKUP SERVICE
  * ─────────────────────────────────────────────────────────────────
- * Backs the entire clinical database up to the SIGNED-IN USER'S OWN
- * Google Drive, inside a private "Hisapp_Backups" folder. Access is
- * scoped with drive.file (the app can only touch files it created),
- * so nothing else in the user's Drive is ever reachable.
+ * Backs the signed-in account's records up to THEIR OWN Google Drive, inside a
+ * private "Hisapp_Backups" folder. Access is scoped with drive.file (the app
+ * can only touch files it created).
  *
- * The access token comes from Firebase Authentication (Google provider).
+ *   • Hisapp_Latest.json — ONE file, updated in place after changes (about one
+ *     second after the last edit, at most eight seconds apart). It is the
+ *     always-current recovery copy.
+ *   • Hisapp_Backup_<time>.json — timestamped archives, created weekly and on
+ *     "Backup Now". They are never overwritten.
+ *
+ * Before the latest file is overwritten, any newer copy written by another
+ * device is union-imported, so a device with partial data cannot erase a
+ * richer backup.
  */
 import {
   getAllAuditLogs,
@@ -14,6 +21,7 @@ import {
   getAllPatientProfiles,
   getAllSettlements,
   getSettings,
+  importLedgerSnapshot,
   saveSettings,
 } from '../db/indexedDB';
 
@@ -31,6 +39,7 @@ export interface DriveBackupMeta {
   id: string;
   name: string;
   createdTime: string;
+  modifiedTime?: string;
 }
 
 export interface DriveBackupPayload {
@@ -127,12 +136,10 @@ export async function getOrCreateBackupsFolder(accessToken: string): Promise<str
   return folderId;
 }
 
-/**
- * Collect the ENTIRE local database (IndexedDB) and upload it as a JSON
- * snapshot into the user's Hisapp_Backups Drive folder.
- */
-export async function createDriveBackup(accessToken: string): Promise<DriveBackupResult> {
-  const folderId = await getOrCreateBackupsFolder(accessToken);
+export const LATEST_BACKUP_FILE_NAME = 'Hisapp_Latest.json';
+
+/** The full snapshot of the active account's local data, as stored on Drive. */
+export async function buildDriveSnapshotPayload(): Promise<DriveBackupPayload> {
   const settings = await getSettings();
   const patientEntries = await getAllPatientEntries();
   const settlements = await getAllSettlements();
@@ -143,12 +150,8 @@ export async function createDriveBackup(accessToken: string): Promise<DriveBacku
   } catch {
     patientProfiles = [];
   }
-
   const now = Date.now();
-  const dateFormatted = new Date(now).toISOString().replace(/[:.]/g, '-').slice(0, 16);
-  const fileName = `Hisapp_Backup_${dateFormatted}.json`;
-
-  const snapshotPayload: DriveBackupPayload = {
+  return {
     app: 'Hisapp Dental Practice & Settlement Tracker',
     clinicName: settings.clinicName,
     doctorName: settings.doctorName,
@@ -156,7 +159,7 @@ export async function createDriveBackup(accessToken: string): Promise<DriveBacku
     currencySymbol: settings.currencySymbol,
     snapshotTimestamp: now,
     snapshotDate: new Date(now).toISOString(),
-    version: 3,
+    version: 4,
     stats: {
       totalPatientEntries: patientEntries.length,
       totalSettlements: settlements.length,
@@ -169,26 +172,153 @@ export async function createDriveBackup(accessToken: string): Promise<DriveBacku
     patientProfiles,
     settings,
   };
+}
 
+function multipartBody(metadata: Record<string, unknown>, payload: unknown): { boundary: string; body: string } {
   const boundary = '-------314159265358979323846';
   const delimiter = `\r\n--${boundary}\r\n`;
   const closeDelimiter = `\r\n--${boundary}--`;
-
-  const metadata = {
-    name: fileName,
-    parents: [folderId],
-    mimeType: 'application/json',
-    description: `Automated Hisapp Clinical Snapshot generated on ${new Date(now).toLocaleString()}`,
-  };
-
-  const multipartRequestBody =
+  const body =
     delimiter +
     'Content-Type: application/json; charset=UTF-8\r\n\r\n' +
     JSON.stringify(metadata) +
     delimiter +
     'Content-Type: application/json\r\n\r\n' +
-    JSON.stringify(snapshotPayload, null, 2) +
+    JSON.stringify(payload) +
     closeDelimiter;
+  return { boundary, body };
+}
+
+async function throwForDriveError(res: Response, action: string): Promise<never> {
+  if (res.status === 401) throw new Error('SESSION_EXPIRED');
+  throw new Error(`${action}: ${await res.text()}`);
+}
+
+/** Finds the latest-backup file inside the folder by name (used when the cached id is unknown). */
+async function findLatestFileId(accessToken: string, folderId: string): Promise<{ id: string; modifiedTime: string } | null> {
+  const query = encodeURIComponent(
+    `name = '${LATEST_BACKUP_FILE_NAME}' and '${folderId}' in parents and trashed = false`
+  );
+  const res = await driveFetch(accessToken, `/files?q=${query}&fields=files(id,modifiedTime)&pageSize=1`);
+  if (!res.ok) await throwForDriveError(res, 'Failed to search Google Drive');
+  const data = await res.json();
+  const file = data.files?.[0];
+  return file ? { id: file.id, modifiedTime: file.modifiedTime } : null;
+}
+
+/** Metadata of a known file, or null when it no longer exists / was trashed. */
+async function getFileMeta(accessToken: string, fileId: string): Promise<{ id: string; modifiedTime: string } | null> {
+  const res = await driveFetch(accessToken, `/files/${fileId}?fields=id,modifiedTime,trashed`);
+  if (res.status === 404) return null;
+  if (!res.ok) await throwForDriveError(res, 'Failed to read backup file');
+  const data = await res.json();
+  return data.trashed ? null : { id: data.id, modifiedTime: data.modifiedTime };
+}
+
+/**
+ * Writes the full local snapshot to the account's Hisapp_Latest.json file.
+ *
+ * Steps:
+ *   1. Locate the file (cached id, then a search, then none).
+ *   2. If another device wrote a newer copy since our last write, union-import
+ *      it into the account's local ledger first (nothing local is discarded).
+ *   3. Overwrite the file in place with the complete local state.
+ *
+ * `owner` is the account whose local ledger is active. It must match the
+ * account the token belongs to.
+ */
+export async function syncDriveLatest(
+  accessToken: string,
+  owner: string
+): Promise<{ imported: number; modifiedAt: number }> {
+  const folderId = await getOrCreateBackupsFolder(accessToken);
+  const settings = await getSettings();
+
+  let target: { id: string; modifiedTime: string } | null = null;
+  if (settings.driveLatestFileId) {
+    target = await getFileMeta(accessToken, settings.driveLatestFileId);
+  }
+  if (!target) target = await findLatestFileId(accessToken, folderId);
+
+  let imported = 0;
+  const lastWrittenAt = settings.lastDriveSyncAt ?? 0;
+  if (target && Date.parse(target.modifiedTime) > lastWrittenAt + 1000) {
+    const remote = await downloadDriveBackup(accessToken, target.id);
+    imported = await importLedgerSnapshot(owner, {
+      patientEntries: remote.patientEntries ?? [],
+      settlements: remote.settlements ?? [],
+      auditLogs: remote.auditLogs ?? [],
+      patientProfiles: remote.patientProfiles ?? [],
+    });
+  }
+
+  const payload = await buildDriveSnapshotPayload();
+  const body = JSON.stringify(payload);
+  let modifiedTime: string;
+  let fileId: string;
+
+  if (target) {
+    const res = await fetch(
+      `https://www.googleapis.com/upload/drive/v3/files/${target.id}?uploadType=media&fields=id,modifiedTime`,
+      {
+        method: 'PATCH',
+        headers: { Authorization: `Bearer ${accessToken}`, 'Content-Type': 'application/json' },
+        body,
+      }
+    );
+    if (!res.ok) await throwForDriveError(res, 'Failed to update the Drive backup');
+    const data = await res.json();
+    fileId = data.id;
+    modifiedTime = data.modifiedTime;
+  } else {
+    const { boundary, body: multipart } = multipartBody(
+      {
+        name: LATEST_BACKUP_FILE_NAME,
+        parents: [folderId],
+        mimeType: 'application/json',
+        description: 'Hisapp latest backup. Updated automatically after each change.',
+      },
+      payload
+    );
+    const res = await fetch(
+      'https://www.googleapis.com/upload/drive/v3/files?uploadType=multipart&fields=id,modifiedTime',
+      {
+        method: 'POST',
+        headers: { Authorization: `Bearer ${accessToken}`, 'Content-Type': `multipart/related; boundary=${boundary}` },
+        body: multipart,
+      }
+    );
+    if (!res.ok) await throwForDriveError(res, 'Failed to create the Drive backup');
+    const data = await res.json();
+    fileId = data.id;
+    modifiedTime = data.modifiedTime;
+  }
+
+  const modifiedAt = Date.parse(modifiedTime) || Date.now();
+  await saveSettings({ driveLatestFileId: fileId, driveFolderId: folderId, lastDriveSyncAt: modifiedAt });
+  return { imported, modifiedAt };
+}
+
+/**
+ * Creates a timestamped archive snapshot (weekly and manual backups). Archives
+ * are never overwritten, so they are a safe history of past states.
+ */
+export async function createDriveBackup(accessToken: string): Promise<DriveBackupResult> {
+  const folderId = await getOrCreateBackupsFolder(accessToken);
+  const payload = await buildDriveSnapshotPayload();
+  const now = payload.snapshotTimestamp;
+  const dateFormatted = new Date(now).toISOString().replace(/[:.]/g, '-').slice(0, 16);
+  const fileName = `Hisapp_Backup_${dateFormatted}.json`;
+
+  const { boundary, body } = multipartBody(
+    {
+      name: fileName,
+      parents: [folderId],
+      mimeType: 'application/json',
+      description: `Automated Hisapp Clinical Snapshot generated on ${new Date(now).toLocaleString()}`,
+    },
+    payload
+  );
 
   const uploadRes = await fetch(
     'https://www.googleapis.com/upload/drive/v3/files?uploadType=multipart',
@@ -198,24 +328,18 @@ export async function createDriveBackup(accessToken: string): Promise<DriveBacku
         Authorization: `Bearer ${accessToken}`,
         'Content-Type': `multipart/related; boundary=${boundary}`,
       },
-      body: multipartRequestBody,
+      body,
     }
   );
 
   if (!uploadRes.ok) {
+    if (uploadRes.status === 401) throw new Error('SESSION_EXPIRED');
     const errorText = await uploadRes.text();
-    if (uploadRes.status === 401) {
-      throw new Error('SESSION_EXPIRED');
-    }
     throw new Error(`Failed to upload backup file to Google Drive: ${errorText}`);
   }
 
   const uploadedData = await uploadRes.json();
-
-  await saveSettings({
-    lastDriveSnapshotTimestamp: now,
-    driveFolderId: folderId,
-  });
+  await saveSettings({ lastDriveSnapshotTimestamp: now, driveFolderId: folderId });
 
   return {
     fileId: uploadedData.id,
@@ -223,12 +347,12 @@ export async function createDriveBackup(accessToken: string): Promise<DriveBacku
     folderId,
     folderName: BACKUPS_FOLDER_NAME,
     timestamp: now,
-    totalEntries: patientEntries.length,
-    totalSettlements: settlements.length,
+    totalEntries: payload.patientEntries.length,
+    totalSettlements: payload.settlements.length,
   };
 }
 
-/** List the most recent backup files in the user's Hisapp_Backups folder. */
+/** List the most recently modified backup files in the user's Hisapp_Backups folder. */
 export async function listDriveBackups(
   accessToken: string,
   limit = 5
@@ -237,7 +361,7 @@ export async function listDriveBackups(
   const query = encodeURIComponent(`'${folderId}' in parents and trashed = false`);
   const res = await driveFetch(
     accessToken,
-    `/files?q=${query}&orderBy=createdTime desc&fields=files(id,name,createdTime)&pageSize=${limit}`
+    `/files?q=${query}&orderBy=modifiedTime desc&fields=files(id,name,createdTime,modifiedTime)&pageSize=${limit}`
   );
   if (!res.ok) {
     if (res.status === 401) throw new Error('SESSION_EXPIRED');
@@ -261,8 +385,8 @@ export async function downloadDriveBackup(
 }
 
 /**
- * Convenience: download the most recent backup, or return null when the
- * user's Drive has no backups yet.
+ * The most recently modified backup (the latest file or an archive), or null
+ * when the user's Drive has no backups yet.
  */
 export async function downloadLatestDriveBackup(
   accessToken: string
@@ -275,8 +399,7 @@ export async function downloadLatestDriveBackup(
 }
 
 /**
- * Checks if 7 days have passed since the last Drive backup, and if so,
- * automatically creates a fresh weekly backup.
+ * Creates a weekly archive snapshot if the last one is at least 7 days old.
  */
 export async function checkAndRunWeeklyAutoBackup(accessToken: string): Promise<boolean> {
   const settings = await getSettings();

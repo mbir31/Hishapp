@@ -23,7 +23,7 @@ export const BottomNav: React.FC<BottomNavProps> = ({
 
   return (
     <nav className="bottom-nav" aria-label="Main navigation">
-      <div className="bottom-nav__dock ios-glass-nav">
+      <div className="bottom-nav__dock ios-glass-nav bottom-nav__dock--dark">
         {navItems.map((item) => {
           const Icon = item.icon;
           const isActive = activeTab === item.id;

@@ -21,6 +21,23 @@ export const firebaseConfig = {
   measurementId: 'G-D00YKC7CWJ',
 };
 
+/**
+ * OPTIONAL — Google OAuth Web client ID used to renew the Google Drive
+ * connection silently (no pop-up) when its one-hour access token expires.
+ *
+ * Where to find it: Firebase Console → Authentication → Sign-in method →
+ * Google → "Web SDK configuration" → "Web client ID" (looks like
+ * 1234567890-abc….apps.googleusercontent.com).
+ *
+ * Also add https://hishapp1.web.app (and http://localhost:3000 for local
+ * development) to that client's "Authorized JavaScript origins" in Google
+ * Cloud Console → APIs & Services → Credentials.
+ *
+ * Until this is set, Drive renewal still works but needs one tap on
+ * "Reconnect Google Drive". Your records sync live regardless.
+ */
+export const googleOAuthClientId = '';
+
 /** True once real Firebase credentials have been pasted above. */
 export function isFirebaseConfigured(): boolean {
   return (

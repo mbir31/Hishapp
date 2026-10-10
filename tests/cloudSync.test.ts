@@ -1,147 +1,97 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
 import {
-  decideSignInSync,
-  isAccountSwitch,
+  candidateWins,
+  isSyncLedgerDataEmpty,
   mergeSyncLedgerData,
-  type SignInSyncInput,
+  normalizeRemoteRecord,
+  recordFingerprint,
+  recordVersion,
+  syncLedgerDataEqual,
   type SyncLedgerData,
 } from '../src/services/cloudSync';
 import type { AuditLogEntry, PatientEntry, PatientProfile, Settlement } from '../src/types';
 
-const base: SignInSyncInput = {
-  userUid: 'uid-B',
-  previousUserUid: null,
-  dataOwnerUid: null,
-  localHasData: true,
-  cloudHasData: true,
-  cloudSnapshotAt: 2000,
-  lastSyncedAt: 1000,
-};
+// ── Realtime Database returns records without empty arrays or null fields.
+// Normalization restores the exact shape, so the same record always compares
+// equal on every device.
 
-const decide = (overrides: Partial<SignInSyncInput>) => decideSignInSync({ ...base, ...overrides });
-
-// ── The reported bug: logout of account A, login of account B on the same
-// device. The local cache still holds A's records; B's Drive backup must win.
-
-test('account switch (persisted dataOwnerUid) restores the new account cloud backup over the local cache', () => {
-  const decision = decide({ dataOwnerUid: 'uid-A', localHasData: true, cloudHasData: true });
-  assert.equal(decision.action, 'restore-cloud');
-  assert.equal(decision.accountSwitched, true);
-});
-
-test('account switch with no cloud backup clears the previous account cache instead of showing it', () => {
-  const decision = decide({ dataOwnerUid: 'uid-A', localHasData: true, cloudHasData: false });
-  assert.equal(decision.action, 'clear-local');
-  assert.equal(decision.accountSwitched, true);
-});
-
-test('account switch is detected from the previous session user even without a persisted tag (legacy installs)', () => {
-  const withCloud = decide({ previousUserUid: 'uid-A', dataOwnerUid: null, cloudHasData: true });
-  assert.equal(withCloud.action, 'restore-cloud');
-  assert.equal(withCloud.accountSwitched, true);
-
-  const withoutCloud = decide({ previousUserUid: 'uid-A', dataOwnerUid: null, cloudHasData: false });
-  assert.equal(withoutCloud.action, 'clear-local');
-  assert.equal(withoutCloud.accountSwitched, true);
-});
-
-test('an account switch never keeps the local cache, even when the cloud copy is older', () => {
-  const decision = decide({
-    dataOwnerUid: 'uid-A',
-    localHasData: true,
-    cloudHasData: true,
-    cloudSnapshotAt: 500, // older than the device's last sync point
-    lastSyncedAt: 9000,
+test('records read back from the cloud are restored to the app shape', () => {
+  const fromCloud = normalizeRemoteRecord('entry', {
+    id: 'entry-1',
+    serial: '7',
+    date: '2026-10-10',
+    patientName: 'Rahim',
+    procedure: 'Filling',
+    receivedAmount: '500',
+    doctorShare: 200,
+    settlementStatus: 'Pending',
+    createdAt: 10,
+    updatedAt: 11,
   });
-  assert.equal(decision.action, 'restore-cloud');
-  assert.equal(decision.accountSwitched, true);
+  assert.equal(fromCloud.serial, 7);
+  assert.equal(fromCloud.receivedAmount, 500);
+  assert.equal(fromCloud.settlementId, null);
+  assert.equal(fromCloud.remarks, '');
 });
 
-// ── Same account: offline edits made while signed out must survive sign-in.
-
-test('same-account data is merged even when the Drive snapshot is not newer (offline edits are protected)', () => {
-  const decision = decide({
-    userUid: 'uid-A',
-    dataOwnerUid: 'uid-A',
-    previousUserUid: 'uid-A',
-    localHasData: true,
-    cloudHasData: true,
-    cloudSnapshotAt: 1000,
-    lastSyncedAt: 1000, // this device made the newest backup
+test('a settlement with an empty patient list is restored instead of dropped', () => {
+  const restored = normalizeRemoteRecord('settlement', {
+    settlementId: 'ST-20261010-01',
+    settlementDate: '2026-10-10',
+    periodFrom: '2026-10-01',
+    periodTo: '2026-10-10',
+    createdAt: 5,
   });
-  assert.equal(decision.action, 'merge-cloud');
-  assert.equal(decision.accountSwitched, false);
+  assert.deepEqual(restored.patientIds, []);
 });
 
-test('same account merges a newer Drive snapshot instead of replacing local data (multi-device sync)', () => {
-  const decision = decide({
-    userUid: 'uid-A',
-    dataOwnerUid: 'uid-A',
-    previousUserUid: null,
-    localHasData: true,
-    cloudHasData: true,
-    cloudSnapshotAt: 5000,
-    lastSyncedAt: 1000,
-  });
-  assert.equal(decision.action, 'merge-cloud');
-  assert.equal(decision.accountSwitched, false);
+test('fingerprints ignore missing, null and undefined fields and key order', () => {
+  const local = { id: 'a', name: 'X', phone: undefined, notes: null, procedures: [] as string[] };
+  const cloud = { procedures: [], name: 'X', id: 'a' };
+  assert.equal(recordFingerprint(local), recordFingerprint(cloud));
+  assert.notEqual(recordFingerprint({ id: 'a', name: 'X' }), recordFingerprint({ id: 'a', name: 'Y' }));
 });
 
-// ── Fresh devices / wiped browsers keep the original auto-restore behavior.
+test('the winner rule is deterministic: higher version wins, then larger fingerprint', () => {
+  const older = patientEntry('visit', 10, 'Old');
+  const newer = patientEntry('visit', 20, 'New');
+  assert.equal(candidateWins('entry', newer, older), true);
+  assert.equal(candidateWins('entry', older, newer), false);
 
-test('empty local cache adopts the cloud backup (new device auto-restore)', () => {
-  const decision = decide({ localHasData: false, cloudHasData: true });
-  assert.equal(decision.action, 'restore-cloud');
-  assert.equal(decision.accountSwitched, false);
+  // Exact tie: exactly one side wins, and the same answer comes out on both devices.
+  const a = patientEntry('visit', 30, 'Alpha');
+  const b = patientEntry('visit', 30, 'Beta');
+  assert.notEqual(candidateWins('entry', a, b), candidateWins('entry', b, a));
 });
 
-test('empty local cache without cloud backup stays empty (nothing to restore)', () => {
-  const decision = decide({ localHasData: false, cloudHasData: false });
-  assert.equal(decision.action, 'keep-local');
-  assert.equal(decision.accountSwitched, false);
+test('a record is never re-written when the cloud already holds an equal or winning copy', () => {
+  const cloudCopy = patientEntry('visit', 50, 'Same');
+  const localCopy = patientEntry('visit', 50, 'Same');
+  assert.equal(candidateWins('entry', localCopy, cloudCopy), false);
+  assert.equal(candidateWins('entry', cloudCopy, localCopy), false);
 });
 
-// ── Never-synced local data (app used while signed out, then first sign-in).
-
-test('cloud takes priority over never-synced local data when the account already has backups', () => {
-  const decision = decide({
-    dataOwnerUid: null,
-    previousUserUid: null,
-    localHasData: true,
-    cloudHasData: true,
-    cloudSnapshotAt: 2000,
-    lastSyncedAt: 0,
-  });
-  assert.equal(decision.action, 'restore-cloud');
-  assert.equal(decision.accountSwitched, false);
+test('profile versions use the last user edit, not the derived recount', () => {
+  assert.equal(recordVersion('profile', { createdAt: 5, updatedAt: 9 }), 9);
+  assert.equal(recordVersion('settlement', { createdAt: 5, updatedAt: 9 }), 5);
+  assert.equal(recordVersion('audit', { timestamp: 42 }), 42);
 });
 
-test('never-synced local data is kept and claimed when the account has no backups', () => {
-  const decision = decide({
-    dataOwnerUid: null,
-    previousUserUid: null,
-    localHasData: true,
-    cloudHasData: false,
-    lastSyncedAt: 0,
-  });
-  assert.equal(decision.action, 'keep-local');
-  assert.equal(decision.accountSwitched, false);
+test('empty and equal snapshots are recognised regardless of record order', () => {
+  assert.equal(isSyncLedgerDataEmpty({ patientEntries: [], settlements: [], auditLogs: [], patientProfiles: [] }), true);
+  const first = syncData([patientEntry('b', 1), patientEntry('a', 1)]);
+  const second = syncData([patientEntry('a', 1), patientEntry('b', 1)]);
+  assert.equal(syncLedgerDataEqual(first, second), true);
+  assert.equal(isSyncLedgerDataEmpty(first), false);
 });
 
-// ── isAccountSwitch signal checks.
-
-test('isAccountSwitch only fires for a genuinely different account', () => {
-  assert.equal(isAccountSwitch({ userUid: 'uid-A', previousUserUid: null, dataOwnerUid: null }), false);
-  assert.equal(isAccountSwitch({ userUid: 'uid-A', previousUserUid: 'uid-A', dataOwnerUid: 'uid-A' }), false);
-  assert.equal(isAccountSwitch({ userUid: 'uid-B', previousUserUid: 'uid-A', dataOwnerUid: 'uid-A' }), true);
-  assert.equal(isAccountSwitch({ userUid: 'uid-B', previousUserUid: null, dataOwnerUid: 'uid-A' }), true);
-  assert.equal(isAccountSwitch({ userUid: 'uid-B', previousUserUid: 'uid-A', dataOwnerUid: null }), true);
-  // A restored session of the same account (page reload) is not a switch.
-  assert.equal(isAccountSwitch({ userUid: 'uid-A', previousUserUid: null, dataOwnerUid: 'uid-A' }), false);
+test('a tombstone with the same timestamp as the record deletes it, so a stale copy cannot revive it', () => {
+  const entry = patientEntry('gone', 10);
+  const tombstone = deletionAudit('gone', 10);
+  const merged = mergeSyncLedgerData(syncData([], [tombstone]), syncData([entry]));
+  assert.equal(merged.patientEntries.length, 0);
 });
-
-// ── Realtime multi-device record reconciliation. ──
 
 test('simultaneous new entries from two devices merge instead of overwriting each other', () => {
   const baseData = syncData([patientEntry('base-visit', 10)]);
