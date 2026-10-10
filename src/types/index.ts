@@ -99,6 +99,28 @@ export interface ClinicSettings {
    * preset — once. Deleting it afterwards stays deleted.
    */
   followUpPresetsChecked?: boolean;
+  /** Timestamp of last manual or automatic offline full data export */
+  lastOfflineExportAt?: number | null;
+}
+
+export interface ReconciliationResult {
+  localEntries: number;
+  remoteEntries: number;
+  localSettlements: number;
+  remoteSettlements: number;
+  healedCount: number;
+  status: 'perfect-parity' | 'healed' | 'error';
+  checkedAt: number;
+  message: string;
+}
+
+export interface CloudSnapshotInfo {
+  key: 'latest' | 'yesterday' | 'last_week';
+  label: string;
+  timestamp: number;
+  entryCount: number;
+  settlementCount: number;
+  exists: boolean;
 }
 
 export interface PatientProfile {

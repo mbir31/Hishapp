@@ -79,3 +79,24 @@ self.addEventListener('fetch', (event) => {
     })
   );
 });
+
+// ─────────────────────────────────────────────────────────────────
+// BACKGROUND SYNC API (ZERO DATA LOSS RESILIENCE)
+// ─────────────────────────────────────────────────────────────────
+self.addEventListener('sync', (event) => {
+  if (event.tag === 'hisapp-cloud-sync') {
+    event.waitUntil(
+      self.clients.matchAll({ type: 'window', includeUncontrolled: true }).then((clients) => {
+        clients.forEach((client) => {
+          client.postMessage({ type: 'BACKGROUND_SYNC_TRIGGER' });
+        });
+      })
+    );
+  }
+});
+
+self.addEventListener('message', (event) => {
+  if (event.data && event.data.type === 'SKIP_WAITING') {
+    self.skipWaiting();
+  }
+});

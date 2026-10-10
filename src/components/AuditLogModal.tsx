@@ -13,9 +13,11 @@ import {
   FileText,
   Activity,
   CheckCircle2,
+  RotateCcw,
 } from 'lucide-react';
-import { AuditLogEntry } from '../types';
-import { getAllAuditLogs, clearAuditLogs } from '../db/indexedDB';
+import { AuditLogEntry, PatientEntry } from '../types';
+import { getAllAuditLogs, clearAuditLogs, restorePatientEntry } from '../db/indexedDB';
+import { backupEngine } from '../services/backupEngine';
 
 interface AuditLogModalProps {
   isOpen: boolean;
@@ -80,6 +82,17 @@ export const AuditLogModal: React.FC<AuditLogModalProps> = ({ isOpen, onClose, s
     downloadAnchor.click();
     downloadAnchor.remove();
     showToast('Exported', 'Full audit trail exported as JSON', 'success');
+  };
+
+  const handleRestoreEntry = async (entry: PatientEntry) => {
+    try {
+      await restorePatientEntry(entry);
+      backupEngine.onDataChanged();
+      showToast('রেকর্ড উদ্ধার সফল!', `${entry.patientName} (${entry.procedure}) এর রেকর্ড পুনরায় রিস্টোর করা হয়েছে`, 'success');
+      await loadLogs();
+    } catch (err: any) {
+      showToast('উদ্ধার ব্যর্থ', err?.message || 'রেকর্ড রিস্টোর করা যায়নি', 'error');
+    }
   };
 
   const getActionBadge = (action: AuditLogEntry['action']) => {
@@ -189,7 +202,7 @@ export const AuditLogModal: React.FC<AuditLogModalProps> = ({ isOpen, onClose, s
               { id: 'ALL', label: 'All' },
               { id: 'ENTRY_CREATED', label: 'Created' },
               { id: 'ENTRY_EDITED', label: 'Edited' },
-              { id: 'ENTRY_DELETED', label: 'Deleted' },
+              { id: 'ENTRY_DELETED', label: '🗑️ Recycle Bin' },
               { id: 'SETTLEMENT_CREATED', label: 'Settlement' },
               { id: 'DATA_IMPORTED', label: 'Import' },
             ].map((f) => (
@@ -250,9 +263,22 @@ export const AuditLogModal: React.FC<AuditLogModalProps> = ({ isOpen, onClose, s
                     )}
                   </div>
 
-                  <p className="text-xs font-semibold text-slate-800 leading-snug">
-                    {log.details}
-                  </p>
+                  <div className="flex items-center justify-between gap-2 pt-0.5">
+                    <p className="text-xs font-semibold text-slate-800 leading-snug flex-1">
+                      {log.details}
+                    </p>
+                    {log.action === 'ENTRY_DELETED' && log.previousData && (
+                      <button
+                        type="button"
+                        onClick={() => handleRestoreEntry(log.previousData)}
+                        className="inline-flex items-center gap-1.5 px-3 py-1 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white text-[11px] font-bold shadow-xs active:scale-95 transition shrink-0 ml-2"
+                        title="এই রেকর্ডটি পুনরায় সক্রিয় তালিকায় ফিরিয়ে আনুন"
+                      >
+                        <RotateCcw className="w-3.5 h-3.5" />
+                        <span>উদ্ধার করুন</span>
+                      </button>
+                    )}
+                  </div>
 
                   {/* Expandable Before/After Snapshot */}
                   {isExpanded && hasDiff && (

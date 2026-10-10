@@ -283,7 +283,7 @@
   }
 }
 
-/* Floating iOS-style glass dock */
+/* Floating 3D rounded iOS-style glass dock */
 .bottom-nav {
   position: fixed;
   z-index: 40;
@@ -291,7 +291,7 @@
   bottom: 0;
   display: flex;
   justify-content: center;
-  padding: 0 14px calc(6px + env(safe-area-inset-bottom, 0px));
+  padding: 0 12px calc(8px + env(safe-area-inset-bottom, 0px));
   pointer-events: none;
 }
 
@@ -300,138 +300,87 @@
   isolation: isolate;
   display: flex;
   align-items: center;
-  gap: 4px;
-  width: min(100%, 520px);
-  min-height: 70px;
-  padding: 6px;
-  border-radius: 32px;
+  justify-content: space-around;
+  gap: 2px;
+  width: min(calc(100vw - 18px), 570px);
+  min-height: 72px;
+  padding: 6px 10px;
+  border-radius: 9999px;
   pointer-events: auto;
 }
 
+/* 3D Specular curved glass reflection arc along upper hemisphere */
 .bottom-nav__dock::before {
   content: '';
   position: absolute;
   z-index: 0;
-  inset: 1px 1px auto;
+  inset: 1.5px 3px auto;
   height: 48%;
-  border-radius: 31px 31px 48% 48% / 31px 31px 48% 48%;
-  background: linear-gradient(180deg, rgba(255, 255, 255, 0.62), rgba(255, 255, 255, 0));
+  border-radius: 9999px 9999px 60% 60% / 9999px 9999px 38% 38%;
+  background: linear-gradient(
+    180deg,
+    rgba(255, 255, 255, 0.32) 0%,
+    rgba(255, 255, 255, 0.08) 50%,
+    rgba(255, 255, 255, 0) 100%
+  );
   pointer-events: none;
 }
 
-/* Dark dock: semi-transparent BLACK frosted glass. Only the colour changes —
-   shape, size, padding and spacing are identical to the light dock. Scoped to
-   the dock (.bottom-nav__dock--dark) so the header keeps its white glass. */
+/* 3D Luxury Dark Frosted Glass Dock */
 .bottom-nav__dock.ios-glass-nav.bottom-nav__dock--dark {
-  background-color: rgba(0, 0, 0, 0.42);
+  background-color: rgba(9, 13, 22, 0.76);
   background-image:
-    linear-gradient(
-      155deg,
-      rgba(255, 255, 255, 0.12) 0%,
-      rgba(255, 255, 255, 0.03) 26%,
-      rgba(255, 255, 255, 0) 54%
+    radial-gradient(
+      130% 90% at 50% 0%,
+      rgba(255, 255, 255, 0.18) 0%,
+      rgba(255, 255, 255, 0.04) 50%,
+      rgba(255, 255, 255, 0) 70%
+    ),
+    radial-gradient(
+      100% 70% at 50% 100%,
+      rgba(0, 0, 0, 0.65) 0%,
+      rgba(0, 0, 0, 0) 80%
     ),
     linear-gradient(
-      155deg,
-      rgba(15, 23, 42, 0.56) 0%,
-      rgba(2, 6, 23, 0.4) 48%,
-      rgba(0, 0, 0, 0.52) 100%
+      180deg,
+      rgba(28, 38, 56, 0.68) 0%,
+      rgba(13, 20, 36, 0.8) 52%,
+      rgba(2, 6, 19, 0.92) 100%
     );
-  -webkit-backdrop-filter: blur(34px) saturate(180%);
-  backdrop-filter: blur(34px) saturate(180%);
-  border: 1px solid rgba(255, 255, 255, 0.14);
+  -webkit-backdrop-filter: blur(36px) saturate(220%) contrast(108%);
+  backdrop-filter: blur(36px) saturate(220%) contrast(108%);
+  border: 1px solid rgba(255, 255, 255, 0.22);
   box-shadow:
-    inset 0 1px 0 rgba(255, 255, 255, 0.2),
-    inset 0 -1px 0 rgba(0, 0, 0, 0.3),
-    0 22px 48px -20px rgba(0, 0, 0, 0.55),
-    0 8px 20px -12px rgba(0, 0, 0, 0.35);
+    /* Top rim specular light reflection (gives authentic 3D sculpted feel) */
+    inset 0 1.5px 0.5px rgba(255, 255, 255, 0.65),
+    /* 3D internal curved glass bevel highlight */
+    inset 0 4px 14px rgba(255, 255, 255, 0.12),
+    /* Bottom ambient occlusion groove */
+    inset 0 -2.5px 6px rgba(0, 0, 0, 0.75),
+    /* Ultra-fine perimeter depth contour */
+    inset 0 0 0 1px rgba(255, 255, 255, 0.08),
+    /* Layered 3D floating shadows */
+    0 32px 64px -12px rgba(0, 0, 0, 0.85),
+    0 16px 32px -8px rgba(0, 0, 0, 0.62),
+    0 4px 12px rgba(0, 0, 0, 0.45);
 }
 
 .bottom-nav__dock--dark::before {
-  background: linear-gradient(180deg, rgba(255, 255, 255, 0.14), rgba(255, 255, 255, 0));
-}
-
-.bottom-nav__dock--dark .bottom-nav__item {
-  background-color: rgba(255, 255, 255, 0.12);
-  background-image: linear-gradient(
-    145deg,
-    rgba(255, 255, 255, 0.22) 0%,
-    rgba(255, 255, 255, 0.06) 50%,
-    rgba(255, 255, 255, 0.12) 100%
+  background: linear-gradient(
+    180deg,
+    rgba(255, 255, 255, 0.26) 0%,
+    rgba(255, 255, 255, 0.06) 55%,
+    rgba(255, 255, 255, 0) 100%
   );
-  -webkit-backdrop-filter: blur(14px) saturate(160%);
-  backdrop-filter: blur(14px) saturate(160%);
-  border: 1px solid rgba(255, 255, 255, 0.2);
-  box-shadow:
-    inset 0 1px 0 rgba(255, 255, 255, 0.35),
-    0 2px 5px rgba(0, 0, 0, 0.25);
-  border-radius: 22px;
 }
 
-.bottom-nav__dock--dark .bottom-nav__item:hover:not(.is-active) {
-  background-color: rgba(255, 255, 255, 0.24);
-  border-color: rgba(255, 255, 255, 0.38);
-  box-shadow:
-    inset 0 1px 0 rgba(255, 255, 255, 0.5),
-    0 3px 8px rgba(0, 0, 0, 0.3);
-}
-
-.bottom-nav__dock--dark .bottom-nav__item.is-active {
-  background-color: rgba(255, 255, 255, 0.95);
-  background-image: linear-gradient(
-    145deg,
-    #ffffff 0%,
-    rgba(255, 255, 255, 0.9) 100%
-  );
-  border-color: rgba(255, 255, 255, 0.98);
-  box-shadow:
-    inset 0 1px 0 #ffffff,
-    inset 0 -1px 0 rgba(0, 0, 0, 0.06),
-    0 4px 14px rgba(0, 0, 0, 0.4),
-    0 0 14px var(--nav-tint);
-}
-
-.bottom-nav__dock--dark .bottom-nav__icon-wrap {
-  border-color: rgba(255, 255, 255, 0.3);
-  background: rgba(255, 255, 255, 0.15);
-  box-shadow:
-    inset 0 1px 0 rgba(255, 255, 255, 0.35),
-    0 2px 4px rgba(0, 0, 0, 0.15);
-}
-
-.bottom-nav__dock--dark .bottom-nav__item.is-active .bottom-nav__icon-wrap {
-  border-color: rgba(255, 255, 255, 0.9);
-  background: linear-gradient(145deg, #ffffff, var(--nav-tint));
-  box-shadow:
-    inset 0 1px 0 #ffffff,
-    0 2px 6px rgba(0, 0, 0, 0.12);
-}
-
-.bottom-nav__dock--dark .bottom-nav__icon {
-  filter: drop-shadow(0 1px 1px rgba(0, 0, 0, 0.2));
-}
-
-.bottom-nav__dock--dark .bottom-nav__label {
-  color: #e2e8f0;
-  font-weight: 600;
-  text-shadow: 0 1px 2px rgba(0, 0, 0, 0.4);
-}
-
-.bottom-nav__dock--dark .bottom-nav__item.is-active .bottom-nav__label {
-  color: var(--nav-accent);
-  font-weight: 800;
-  text-shadow: none;
-}
-
-.bottom-nav__dock--dark .bottom-nav__badge {
-  border-color: rgba(255, 255, 255, 0.9);
-}
-
+/* ─────────────────────────────────────────────────────────────
+   NAVIGATION BUTTONS — NO CAPSULES, WIDE & DYNAMIC ANIMATED
+   ───────────────────────────────────────────────────────────── */
 .bottom-nav__item {
-  --nav-accent: #3478d4;
-  --nav-tint: rgba(52, 120, 212, 0.1);
-  --nav-border: rgba(52, 120, 212, 0.15);
-  --nav-shadow: rgba(52, 120, 212, 0.12);
+  --nav-accent: #38bdf8;
+  --nav-tint: rgba(56, 189, 248, 0.14);
+  --nav-glow: rgba(56, 189, 248, 0.5);
   position: relative;
   z-index: 1;
   display: flex;
@@ -439,172 +388,317 @@
   flex-direction: column;
   align-items: center;
   justify-content: center;
-  gap: 2px;
+  gap: 3px;
   min-width: 0;
-  min-height: 56px;
-  padding: 3px 2px;
-  border: 1px solid transparent;
-  border-radius: 24px;
+  min-height: 60px;
+  padding: 5px 8px;
+  /* Capsule removal: completely transparent, frameless, natural integration */
+  border: none;
   background: transparent;
-  color: var(--nav-accent);
+  box-shadow: none;
+  border-radius: 18px;
+  color: #94a3b8;
   cursor: pointer;
   -webkit-tap-highlight-color: transparent;
   touch-action: manipulation;
   transition:
-    background 180ms ease,
-    border-color 180ms ease,
-    box-shadow 180ms ease,
-    transform 180ms cubic-bezier(0.2, 0.8, 0.2, 1);
+    transform 260ms cubic-bezier(0.34, 1.56, 0.64, 1),
+    color 200ms ease;
 }
 
+/* Dark dock overrides for buttons — explicitly NO capsule containers */
+.bottom-nav__dock--dark .bottom-nav__item {
+  background-color: transparent;
+  background-image: none;
+  border: none;
+  box-shadow: none;
+  -webkit-backdrop-filter: none;
+  backdrop-filter: none;
+}
+
+.bottom-nav__dock--dark .bottom-nav__item:hover:not(.is-active) {
+  background: transparent;
+  border: none;
+  box-shadow: none;
+  transform: translateY(-3px);
+}
+
+.bottom-nav__dock--dark .bottom-nav__item.is-active {
+  background-color: transparent;
+  background-image: none;
+  border: none;
+  box-shadow: none;
+  animation: navButtonPop 320ms cubic-bezier(0.34, 1.56, 0.64, 1) both;
+}
+
+/* Distinct Vibrant Palette per Tab */
 .bottom-nav__item--dashboard {
-  --nav-accent: #c99100;
-  --nav-tint: rgba(255, 193, 7, 0.16);
-  --nav-border: rgba(217, 156, 0, 0.18);
-  --nav-shadow: rgba(217, 156, 0, 0.12);
+  --nav-accent: #fbbf24;
+  --nav-tint: rgba(251, 191, 36, 0.16);
+  --nav-glow: rgba(251, 191, 36, 0.55);
 }
 
 .bottom-nav__item--entry {
-  --nav-accent: #15945e;
-  --nav-tint: rgba(34, 197, 94, 0.13);
-  --nav-border: rgba(22, 163, 74, 0.18);
-  --nav-shadow: rgba(22, 163, 74, 0.12);
-}
-
-.bottom-nav__item--settlement {
-  --nav-accent: #c66b13;
-  --nav-tint: rgba(249, 145, 42, 0.15);
-  --nav-border: rgba(217, 119, 6, 0.18);
-  --nav-shadow: rgba(217, 119, 6, 0.12);
+  --nav-accent: #34d399;
+  --nav-tint: rgba(52, 211, 153, 0.16);
+  --nav-glow: rgba(52, 211, 153, 0.55);
 }
 
 .bottom-nav__item--records {
-  --nav-accent: #3478d4;
-  --nav-tint: rgba(59, 130, 246, 0.13);
-  --nav-border: rgba(59, 130, 246, 0.18);
-  --nav-shadow: rgba(59, 130, 246, 0.12);
+  --nav-accent: #38bdf8;
+  --nav-tint: rgba(56, 189, 248, 0.16);
+  --nav-glow: rgba(56, 189, 248, 0.55);
 }
 
-.bottom-nav__item.is-active {
-  border-color: var(--nav-border);
-  background: linear-gradient(145deg, rgba(255, 255, 255, 0.76), var(--nav-tint));
-  box-shadow:
-    inset 0 1px 0 rgba(255, 255, 255, 0.94),
-    0 3px 9px var(--nav-shadow);
+.bottom-nav__item--settlement {
+  --nav-accent: #fb923c;
+  --nav-tint: rgba(251, 146, 60, 0.16);
+  --nav-glow: rgba(251, 146, 60, 0.55);
 }
 
+/* Icon wrap: Sleek, unconstrained, frameless */
 .bottom-nav__icon-wrap {
   position: relative;
   display: flex;
   align-items: center;
   justify-content: center;
-  width: 43px;
-  height: 38px;
-  border: 1px solid rgba(255, 255, 255, 0.7);
-  border-radius: 15px;
-  background: linear-gradient(145deg, rgba(255, 255, 255, 0.75), var(--nav-tint));
-  box-shadow:
-    inset 0 1px 0 rgba(255, 255, 255, 0.92),
-    0 2px 5px rgba(15, 23, 42, 0.06);
-  transition:
-    background 180ms ease,
-    border-color 180ms ease,
-    box-shadow 180ms ease,
-    transform 180ms cubic-bezier(0.2, 0.8, 0.2, 1);
+  width: 38px;
+  height: 32px;
+  border: none;
+  background: transparent;
+  box-shadow: none;
+  transition: transform 260ms cubic-bezier(0.34, 1.56, 0.64, 1);
 }
 
+.bottom-nav__dock--dark .bottom-nav__icon-wrap {
+  border: none;
+  background: transparent;
+  box-shadow: none;
+}
+
+.bottom-nav__dock--dark .bottom-nav__item.is-active .bottom-nav__icon-wrap {
+  border: none;
+  background: transparent;
+  box-shadow: none;
+}
+
+/* Icon styling with dynamic lighting & animation */
 .bottom-nav__icon {
-  width: 25px;
-  height: 25px;
-  color: var(--nav-accent);
+  width: 26px;
+  height: 26px;
+  color: #94a3b8;
   stroke-width: 2.15;
-  filter: drop-shadow(0 1px 0 rgba(255, 255, 255, 0.75));
-  transition: transform 180ms cubic-bezier(0.2, 0.8, 0.2, 1);
+  filter: drop-shadow(0 1px 2px rgba(0, 0, 0, 0.5));
+  transition:
+    transform 280ms cubic-bezier(0.34, 1.56, 0.64, 1),
+    color 200ms ease,
+    filter 280ms ease;
 }
 
+.bottom-nav__dock--dark .bottom-nav__icon {
+  color: #cbd5e1;
+}
+
+/* Hover dynamic animation */
+@media (hover: hover) {
+  .bottom-nav__item:hover:not(.is-active) .bottom-nav__icon {
+    color: #ffffff;
+    transform: translateY(-2px) scale(1.14);
+    filter: drop-shadow(0 4px 8px var(--nav-glow));
+  }
+
+  .bottom-nav__item:hover:not(.is-active) .bottom-nav__label {
+    color: #f1f5f9;
+    text-shadow: 0 0 8px rgba(255, 255, 255, 0.35);
+  }
+}
+
+/* Active State: Vibrant dynamic float & glow */
+.bottom-nav__item.is-active .bottom-nav__icon {
+  color: var(--nav-accent);
+  transform: translateY(-2px) scale(1.15);
+  filter: drop-shadow(0 2px 10px var(--nav-glow));
+  animation: navIconFloat 2.8s ease-in-out infinite;
+}
+
+/* Label: Enriched font size, bold, proportionate and legible */
 .bottom-nav__label {
   max-width: 100%;
   overflow: hidden;
-  color: #64748b;
-  font-size: 10.5px;
+  color: #94a3b8;
+  font-size: 12.5px;
   font-weight: 650;
-  letter-spacing: 0.01em;
-  line-height: 1.1;
+  letter-spacing: 0.015em;
+  line-height: 1.2;
   text-overflow: ellipsis;
   white-space: nowrap;
-  transition: color 180ms ease;
+  transition:
+    color 200ms ease,
+    font-size 200ms ease,
+    font-weight 200ms ease,
+    text-shadow 200ms ease,
+    transform 200ms ease;
 }
 
-.bottom-nav__item.is-active .bottom-nav__icon-wrap {
-  border-color: rgba(255, 255, 255, 0.94);
-  background: linear-gradient(145deg, rgba(255, 255, 255, 0.94), var(--nav-tint));
-  box-shadow:
-    inset 0 1px 0 rgba(255, 255, 255, 1),
-    0 3px 7px var(--nav-shadow);
-  transform: translateY(-1px);
-}
-
-.bottom-nav__item.is-active .bottom-nav__icon {
-  transform: scale(1.06);
+.bottom-nav__dock--dark .bottom-nav__label {
+  color: #cbd5e1;
+  text-shadow: 0 1px 2px rgba(0, 0, 0, 0.7);
 }
 
 .bottom-nav__item.is-active .bottom-nav__label {
-  color: var(--nav-accent);
+  color: #ffffff;
+  font-size: 13px;
+  font-weight: 800;
+  text-shadow:
+    0 1px 2px rgba(0, 0, 0, 0.8),
+    0 0 12px var(--nav-glow);
 }
 
+.bottom-nav__dock--dark .bottom-nav__item.is-active .bottom-nav__label {
+  color: #ffffff;
+  font-size: 13px;
+  font-weight: 800;
+  text-shadow:
+    0 1px 2px rgba(0, 0, 0, 0.8),
+    0 0 12px var(--nav-glow);
+}
+
+/* Dynamic Active Indicator under the button */
+.bottom-nav__indicator {
+  position: absolute;
+  bottom: 3px;
+  width: 0;
+  height: 3px;
+  border-radius: 9999px;
+  background: var(--nav-accent);
+  opacity: 0;
+  transition:
+    width 260ms cubic-bezier(0.34, 1.56, 0.64, 1),
+    opacity 200ms ease;
+  pointer-events: none;
+}
+
+.bottom-nav__item.is-active .bottom-nav__indicator {
+  width: 22px;
+  opacity: 1;
+  box-shadow:
+    0 0 8px var(--nav-accent),
+    0 0 14px var(--nav-glow);
+  animation: navIndicatorPulse 2.2s ease-in-out infinite alternate;
+}
+
+/* Tactile press response */
+.bottom-nav__item:active {
+  transform: scale(0.92) translateY(1px) !important;
+  transition: transform 90ms ease !important;
+}
+
+/* Badge styling & dynamic entrance */
 .bottom-nav__badge {
   position: absolute;
-  top: -5px;
-  right: -9px;
+  top: -4px;
+  right: -8px;
   display: flex;
   align-items: center;
   justify-content: center;
   min-width: 18px;
   height: 18px;
   padding: 0 4px;
-  border: 2px solid rgba(255, 255, 255, 0.95);
+  border: 2px solid rgba(13, 20, 36, 0.95);
   border-radius: 9999px;
   background: linear-gradient(145deg, #fb7185, #e11d48);
-  box-shadow: 0 2px 5px rgba(190, 18, 60, 0.24);
+  box-shadow:
+    0 2px 6px rgba(225, 29, 72, 0.45),
+    0 0 10px rgba(244, 63, 94, 0.35);
   color: white;
-  font-size: 9px;
-  font-weight: 750;
+  font-size: 9.5px;
+  font-weight: 800;
   line-height: 1;
+  animation: navBadgePop 300ms cubic-bezier(0.34, 1.56, 0.64, 1);
 }
 
 .bottom-nav__item:focus-visible {
-  outline: 3px solid var(--nav-accent);
-  outline-offset: 2px;
+  outline: 2px solid var(--nav-accent);
+  outline-offset: 3px;
+  border-radius: 14px;
 }
 
-@media (hover: hover) {
-  .bottom-nav__item:hover:not(.is-active) {
-    background: rgba(255, 255, 255, 0.42);
+/* Dynamic Animation Keyframes */
+@keyframes navButtonPop {
+  0% {
+    transform: scale(0.92);
+  }
+  50% {
+    transform: scale(1.08) translateY(-3px);
+  }
+  100% {
+    transform: scale(1) translateY(0);
   }
 }
 
-.bottom-nav__item:active {
-  transform: scale(0.96);
+@keyframes navIconFloat {
+  0%, 100% {
+    transform: translateY(-2px) scale(1.15);
+  }
+  50% {
+    transform: translateY(-5px) scale(1.18);
+  }
 }
 
-@media (max-width: 360px) {
+@keyframes navIndicatorPulse {
+  0% {
+    opacity: 0.85;
+    transform: scaleX(0.95);
+  }
+  100% {
+    opacity: 1;
+    transform: scaleX(1.18);
+    box-shadow:
+      0 0 12px var(--nav-accent),
+      0 0 20px var(--nav-glow);
+  }
+}
+
+@keyframes navBadgePop {
+  0% {
+    transform: scale(0);
+  }
+  70% {
+    transform: scale(1.2);
+  }
+  100% {
+    transform: scale(1);
+  }
+}
+
+@media (max-width: 380px) {
   .bottom-nav {
-    padding-right: 10px;
-    padding-left: 10px;
+    padding-right: 8px;
+    padding-left: 8px;
   }
 
   .bottom-nav__dock {
-    min-height: 66px;
-    gap: 2px;
-    padding: 5px;
+    min-height: 68px;
+    padding: 5px 6px;
+    gap: 1px;
   }
 
   .bottom-nav__item {
-    min-height: 52px;
+    min-height: 56px;
+    padding: 4px 5px;
   }
 
   .bottom-nav__label {
-    font-size: 10px;
+    font-size: 11.5px;
+  }
+
+  .bottom-nav__item.is-active .bottom-nav__label {
+    font-size: 12px;
+  }
+
+  .bottom-nav__icon {
+    width: 24px;
+    height: 24px;
   }
 }
 
@@ -612,8 +706,11 @@
   .bottom-nav__item,
   .bottom-nav__icon-wrap,
   .bottom-nav__icon,
-  .bottom-nav__label {
-    transition-duration: 0.01ms;
+  .bottom-nav__label,
+  .bottom-nav__indicator,
+  .bottom-nav__badge {
+    animation: none !important;
+    transition-duration: 0.01ms !important;
   }
 }
 

@@ -50,6 +50,7 @@ export const BottomNav: React.FC<BottomNavProps> = ({
                 ) : null}
               </span>
               <span className="bottom-nav__label">{item.label}</span>
+              <span className="bottom-nav__indicator" aria-hidden="true" />
             </button>
           );
         })}

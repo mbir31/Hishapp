@@ -31,6 +31,7 @@ const INITIAL_BACKUP_STATUS: BackupStatus = {
   phase: 'signed-out',
   isConfigured: true,
   isOnline: true,
+  isStoragePersisted: false,
   user: null,
   lastBackupAt: null,
   pendingChanges: false,

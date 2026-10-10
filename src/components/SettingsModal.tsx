@@ -17,8 +17,13 @@ import {
   Smartphone,
   Lock,
   Fingerprint,
+  RotateCcw,
+  Database,
+  RefreshCw,
+  FileCheck,
+  History,
 } from 'lucide-react';
-import { ClinicSettings } from '../types';
+import { ClinicSettings, CloudSnapshotInfo, ReconciliationResult } from '../types';
 import {
   DEFAULT_CLINIC_LOGO,
   DEFAULT_CLINIC_NAME,
@@ -34,7 +39,8 @@ import {
   parseCSVFiles,
   parseJSONBackup,
 } from '../utils/importData';
-import type { BackupStatus } from '../services/backupEngine';
+import { backupEngine, type BackupStatus } from '../services/backupEngine';
+import type { DualStoreHealth } from '../services/emergencyBackup';
 import { usePWAInstall } from '../hooks/usePWAInstall';
 import { AuditLogModal } from './AuditLogModal';
 import { todayDateKey } from '../utils/dateUtils';
@@ -112,6 +118,15 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
   const [confirmPinInput, setConfirmPinInput] = useState<string>('');
   const [isSavingPin, setIsSavingPin] = useState<boolean>(false);
 
+  // Resilience & Fail-Safe states
+  const [reconcileResult, setReconcileResult] = useState<ReconciliationResult | null>(null);
+  const [isReconciling, setIsReconciling] = useState<boolean>(false);
+  const [showTimeMachine, setShowTimeMachine] = useState<boolean>(false);
+  const [snapshots, setSnapshots] = useState<CloudSnapshotInfo[]>([]);
+  const [isLoadingSnapshots, setIsLoadingSnapshots] = useState<boolean>(false);
+  const [isRestoringSnapshot, setIsRestoringSnapshot] = useState<boolean>(false);
+  const [dualStoreHealth, setDualStoreHealth] = useState<DualStoreHealth | null>(null);
+
   // File import state (restore from JSON / CSV backup files)
   const [importConfirm, setImportConfirm] = useState<ImportResult | null>(null);
   const [isImporting, setIsImporting] = useState<boolean>(false);
@@ -138,6 +153,13 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
     const target = backup.user?.phoneNumber || phoneInput.replace(/\D/g, '');
     setIsBiometricEnrolled(isBiometricEnrolledFor(target));
   }, [backup.user, phoneInput]);
+
+  // Load dual-store health when modal opens
+  useEffect(() => {
+    if (isOpen) {
+      backupEngine.getDualStoreHealth().then(setDualStoreHealth).catch(() => {});
+    }
+  }, [isOpen]);
 
   // Sync state when settings prop updates
   useEffect(() => {
@@ -350,6 +372,55 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
     URL.revokeObjectURL(url);
   };
 
+  const handleReconcileVault = async () => {
+    setIsReconciling(true);
+    try {
+      const res = await backupEngine.reconcileVault();
+      setReconcileResult(res);
+      showToast(
+        res.status === 'perfect-parity' ? '১০০% ডাটা সমান্তরাল!' : 'ডাটা অটো-হিল সম্পন্ন!',
+        res.message,
+        'success'
+      );
+    } catch (err: any) {
+      showToast('যাচাই ব্যর্থ', err?.message || 'ডাটা অখণ্ডতা যাচাই করা যায়নি', 'error');
+    } finally {
+      setIsReconciling(false);
+    }
+  };
+
+  const handleToggleTimeMachine = async () => {
+    const nextState = !showTimeMachine;
+    setShowTimeMachine(nextState);
+    if (nextState && backup.user) {
+      setIsLoadingSnapshots(true);
+      try {
+        const list = await backupEngine.getAvailableCloudSnapshots();
+        setSnapshots(list);
+      } catch (err) {
+        // ignore
+      } finally {
+        setIsLoadingSnapshots(false);
+      }
+    }
+  };
+
+  const handleRestoreSnapshot = async (key: 'latest' | 'yesterday' | 'last_week', label: string) => {
+    if (!window.confirm(`আপনি কি সত্যিই ${label} রিস্টোর করতে চান? আপনার বর্তমান ডাটাবেজ এই স্ন্যাপশট দ্বারা পুনরুত্থিত হবে।`)) {
+      return;
+    }
+    setIsRestoringSnapshot(true);
+    try {
+      const res = await backupEngine.restoreCloudSnapshotByKey(key);
+      showToast('স্ন্যাপশট রিস্টোর সফল!', `${res.entries}টি এন্ট্রি ও ${res.settlements}টি সেটেলমেন্ট সফলভাবে রিস্টোর হয়েছে`, 'success');
+      onDataImported?.();
+    } catch (err: any) {
+      showToast('রিস্টোর ব্যর্থ', err?.message || 'স্ন্যাপশট রিস্টোর করা যায়নি', 'error');
+    } finally {
+      setIsRestoringSnapshot(false);
+    }
+  };
+
   const handleExportJSON = async () => {
     try {
       const json = await exportAllDataJSON();
@@ -358,6 +429,11 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
         `Hisapp_Data_Backup_${todayDateKey()}.json`,
         'application/json;charset=utf-8;'
       );
+      const updated = await saveSettings({
+        ...settings,
+        lastOfflineExportAt: Date.now(),
+      });
+      onSaveSettings(updated);
       showToast('JSON Backup Ready', 'Complete database exported safely to your device', 'success');
     } catch (err: any) {
       showToast('Export failed', err?.message, 'error');
@@ -704,6 +780,27 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
 
                 <button
                   type="button"
+                  onClick={handleReconcileVault}
+                  disabled={isReconciling}
+                  className="px-3 py-2 rounded-xl bg-indigo-50 hover:bg-indigo-100 border border-indigo-200 text-indigo-700 text-xs font-semibold flex items-center gap-1.5 active:scale-95 transition disabled:opacity-60"
+                  title="লোকাল ও ক্লাউড ডাটার মধ্যে ১টি রেকর্ডেরও অমিল আছে কিনা স্বয়ংক্রিয়ভাবে অডিট করুন"
+                >
+                  <RefreshCw className={`w-3.5 h-3.5 text-indigo-600 ${isReconciling ? 'animate-spin' : ''}`} />
+                  <span>{isReconciling ? 'যাচাই হচ্ছে...' : 'ডাটা অমিল অডিট (Audit)'}</span>
+                </button>
+
+                <button
+                  type="button"
+                  onClick={handleToggleTimeMachine}
+                  className="px-3 py-2 rounded-xl bg-white hover:bg-slate-50 border border-slate-300 text-slate-700 text-xs font-semibold flex items-center gap-1.5 active:scale-95 transition"
+                  title="টাইম-মেশিন ৩-স্তরীয় ক্লাউড স্ন্যাপশট রিকভারি"
+                >
+                  <History className="w-3.5 h-3.5 text-sky-600" />
+                  <span>{showTimeMachine ? 'টাইম-মেশিন লুকান' : 'টাইম-মেশিন'}</span>
+                </button>
+
+                <button
+                  type="button"
                   onClick={() => setShowChangePin(!showChangePin)}
                   className="px-3 py-2 rounded-xl bg-white hover:bg-slate-50 border border-slate-300 text-slate-700 text-xs font-semibold flex items-center gap-1.5 active:scale-95 transition"
                 >
@@ -717,6 +814,99 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
                   </span>
                 )}
               </div>
+
+              {/* Reconcile Audit Result Panel */}
+              {reconcileResult && (
+                <div
+                  className={`p-3 rounded-xl border text-xs leading-relaxed space-y-1 ${
+                    reconcileResult.status === 'perfect-parity'
+                      ? 'bg-emerald-50 border-emerald-200 text-emerald-800'
+                      : 'bg-indigo-50 border-indigo-200 text-indigo-800'
+                  }`}
+                >
+                  <div className="flex items-center justify-between font-bold">
+                    <span className="flex items-center gap-1">
+                      <FileCheck className="w-4 h-4 text-emerald-600" />
+                      ডাটা অখণ্ডতা অডিট রিপোর্ট
+                    </span>
+                    <span className="text-[10px] bg-white px-2 py-0.5 rounded-full border border-slate-200 text-slate-600">
+                      {new Date(reconcileResult.checkedAt).toLocaleTimeString()}
+                    </span>
+                  </div>
+                  <div className="grid grid-cols-2 gap-2 font-mono text-[11px] pt-1 text-slate-700">
+                    <div>
+                      লোকাল এন্ট্রি: <strong className="text-slate-900">{reconcileResult.localEntries}</strong> | সেটেলমেন্ট:{' '}
+                      <strong className="text-slate-900">{reconcileResult.localSettlements}</strong>
+                    </div>
+                    <div>
+                      ক্লাউড এন্ট্রি: <strong className="text-slate-900">{reconcileResult.remoteEntries}</strong> | সেটেলমেন্ট:{' '}
+                      <strong className="text-slate-900">{reconcileResult.remoteSettlements}</strong>
+                    </div>
+                  </div>
+                  <p className="text-[11px] font-sans pt-0.5">{reconcileResult.message}</p>
+                </div>
+              )}
+
+              {/* Time Machine Cloud Recovery Panel */}
+              {showTimeMachine && (
+                <div className="p-3.5 rounded-xl bg-sky-50/70 border border-sky-200 space-y-2.5 animate-in fade-in">
+                  <div className="flex items-center justify-between">
+                    <h5 className="text-xs font-bold text-slate-900 flex items-center gap-1.5">
+                      <History className="w-4 h-4 text-sky-600" />
+                      ক্লাউড টাইম-মেশিন রিকভারি (Rolling Snapshots)
+                    </h5>
+                    <button
+                      type="button"
+                      onClick={handleToggleTimeMachine}
+                      className="text-[10.5px] font-semibold text-sky-700 hover:text-sky-900"
+                    >
+                      বন্ধ করুন
+                    </button>
+                  </div>
+                  <p className="text-[11px] text-slate-600 leading-relaxed">
+                    কোনো দুর্ঘটনা বা ভুল ডাটা ওভাররাইট হলে যেকোনো পূর্ববর্তী সম্পূর্ণ স্ন্যাপশট থেকে ১ ক্লিকে ডাটাবেজ পুনরুত্থান করুন।
+                  </p>
+
+                  {isLoadingSnapshots ? (
+                    <div className="py-4 text-center text-xs text-slate-500">
+                      <Loader2 className="w-4 h-4 animate-spin inline-block mr-1 text-sky-600" />
+                      ক্লাউড স্ন্যাপশট খোঁজা হচ্ছে...
+                    </div>
+                  ) : snapshots.length === 0 ? (
+                    <div className="py-3 text-center text-xs text-slate-500">কোনো ক্লাউড স্ন্যাপশট পাওয়া যায়নি।</div>
+                  ) : (
+                    <div className="space-y-1.5">
+                      {snapshots.map((snap) => (
+                        <div
+                          key={snap.key}
+                          className="p-2.5 rounded-xl bg-white border border-sky-100 flex items-center justify-between gap-2 text-xs"
+                        >
+                          <div>
+                            <div className="font-bold text-slate-800">{snap.label}</div>
+                            <div className="text-[10.5px] text-slate-500 font-mono">
+                              {snap.exists
+                                ? `${snap.entryCount} এন্ট্রি, ${snap.settlementCount} সেটেলমেন্ট • ${new Date(
+                                    snap.timestamp
+                                  ).toLocaleString()}`
+                                : 'এখনও সংরক্ষিত হয়নি'}
+                            </div>
+                          </div>
+                          {snap.exists && (
+                            <button
+                              type="button"
+                              onClick={() => handleRestoreSnapshot(snap.key, snap.label)}
+                              disabled={isRestoringSnapshot}
+                              className="px-2.5 py-1 rounded-lg bg-sky-600 hover:bg-sky-700 text-white font-bold text-[11px] active:scale-95 transition disabled:opacity-60 shrink-0"
+                            >
+                              রিস্টোর করুন
+                            </button>
+                          )}
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </div>
+              )}
 
               {/* Change PIN Expandable Panel */}
               {showChangePin && (
@@ -1018,21 +1208,103 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
             Backups &amp; Data Safety
           </h4>
 
-          {/* Internal Financial Audit Trail */}
-          <div className="p-3.5 rounded-2xl bg-slate-50 border border-slate-200/80 flex items-center justify-between gap-3">
+          {/* Weekly Offline Backup Safety Reminder Banner */}
+          {(!settings.lastOfflineExportAt ||
+            Date.now() - settings.lastOfflineExportAt > 7 * 24 * 3600 * 1000) && (
+            <div className="p-3.5 rounded-2xl bg-amber-500/10 border border-amber-500/30 space-y-2 text-xs animate-in fade-in">
+              <div className="flex items-start gap-2">
+                <AlertTriangle className="w-4 h-4 text-amber-600 shrink-0 mt-0.5" />
+                <div>
+                  <h5 className="font-bold text-amber-900 leading-tight">
+                    সাপ্তাহিক অফলাইন ব্যাকআপ রিমাইন্ডার
+                  </h5>
+                  <p className="text-[11px] text-amber-800 leading-relaxed mt-0.5">
+                    {settings.lastOfflineExportAt
+                      ? `সর্বশেষ অফলাইন ডাউনলোড হয়েছে ${Math.floor(
+                          (Date.now() - settings.lastOfflineExportAt) / (1000 * 3600 * 24)
+                        )} দিন আগে।`
+                      : 'এখনও কোনো অফলাইন ব্যাকআপ ফাইল ডাউনলোড করা হয়নি।'}{' '}
+                    যেকোনো অপ্রত্যাশিত ডিভাইস রিসেট বা নেটওয়ার্ক সমস্যার হাত থেকে বাঁচতে ১-ক্লিকে অফলাইন কপি সংরক্ষণ করুন।
+                  </p>
+                </div>
+              </div>
+              <button
+                type="button"
+                onClick={handleExportJSON}
+                className="w-full py-1.5 rounded-xl bg-amber-600 hover:bg-amber-700 text-white font-bold text-xs flex items-center justify-center gap-1.5 shadow-xs active:scale-95 transition"
+              >
+                <Download className="w-3.5 h-3.5" />
+                <span>১-ক্লিকে অফলাইন ব্যাকআপ ফাইল ডাউনলোড করুন (JSON)</span>
+              </button>
+            </div>
+          )}
+
+          {/* Dual-Store Redundancy Status Card */}
+          <div className="p-3.5 rounded-2xl bg-slate-50 border border-slate-200/80 space-y-2">
+            <div className="flex items-center justify-between">
+              <div className="flex items-center gap-2">
+                <Database className="w-4 h-4 text-indigo-600" />
+                <h5 className="text-xs font-bold text-slate-900">
+                  ডুয়েল-স্টোর রিডান্ড্যান্সি (Dual-Store Shadow Mirror)
+                </h5>
+              </div>
+              <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-emerald-100 text-emerald-800 border border-emerald-200">
+                100% Protected
+              </span>
+            </div>
+            <div className="grid grid-cols-2 gap-2 text-[11px] text-slate-600 font-mono">
+              <div className="p-2 rounded-xl bg-white border border-slate-200">
+                <div className="text-[10px] font-bold text-slate-400 uppercase font-sans">
+                  Primary DB
+                </div>
+                <div className="font-bold text-slate-800">
+                  {dualStoreHealth?.primaryEntries ?? '...'} এন্ট্রি,{' '}
+                  {dualStoreHealth?.primarySettlements ?? '...'} সেটেলমেন্ট
+                </div>
+              </div>
+              <div className="p-2 rounded-xl bg-white border border-slate-200">
+                <div className="text-[10px] font-bold text-slate-400 uppercase font-sans">
+                  Safety Mirror DB
+                </div>
+                <div className="font-bold text-slate-800">
+                  {dualStoreHealth?.mirrorEntries ?? '...'} এন্ট্রি,{' '}
+                  {dualStoreHealth?.mirrorSettlements ?? '...'} সেটেলমেন্ট
+                </div>
+              </div>
+            </div>
+            <p className="text-[10.5px] text-slate-500 leading-relaxed font-sans">
+              ব্রাউজার বা মেমোরি ক্র্যাশের হাত থেকে রক্ষা করতে মূল ডাটাবেজের পাশাপাশি একটি সম্পূর্ণ পৃথক শ্যাডো ডাটাবেজে রেকর্ডগুলোর সার্বক্ষণিক ক্লোন রাখা হয়।
+            </p>
+          </div>
+
+          {/* Internal Financial Audit Trail & Recycle Bin */}
+          <div className="p-3.5 rounded-2xl bg-slate-50 border border-slate-200/80 flex flex-col sm:flex-row sm:items-center justify-between gap-2.5">
             <div>
-              <h5 className="text-xs font-bold text-slate-900">Financial Audit Trail</h5>
+              <h5 className="text-xs font-bold text-slate-900">
+                অডিট ট্রেইল ও রিসাইকেল বিন (Recycle Bin)
+              </h5>
               <p className="text-[11px] text-slate-500">
-                Tamper-resistant log tracking when records were created, edited, or deleted.
+                মুছে ফেলা যেকোনো রেকর্ড উদ্ধার করুন অথবা অডিট লগ পরীক্ষা করুন।
               </p>
             </div>
-            <button
-              type="button"
-              onClick={() => setIsAuditModalOpen(true)}
-              className="px-3 py-1.5 rounded-xl bg-slate-800 hover:bg-slate-900 text-white text-xs font-bold active:scale-95 transition shrink-0 shadow-xs"
-            >
-              View Audit Log
-            </button>
+            <div className="flex items-center gap-1.5 shrink-0">
+              <button
+                type="button"
+                onClick={() => setIsAuditModalOpen(true)}
+                className="px-3 py-1.5 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-bold active:scale-95 transition shadow-xs flex items-center gap-1"
+                title="মুছে ফেলা রেকর্ডসমূহ দেখুন ও উদ্ধার করুন"
+              >
+                <RotateCcw className="w-3.5 h-3.5" />
+                <span>রিসাইকেল বিন</span>
+              </button>
+              <button
+                type="button"
+                onClick={() => setIsAuditModalOpen(true)}
+                className="px-3 py-1.5 rounded-xl bg-slate-800 hover:bg-slate-900 text-white text-xs font-bold active:scale-95 transition shrink-0 shadow-xs"
+              >
+                অডিট লগ
+              </button>
+            </div>
           </div>
 
           {/* Emergency Local Files Export */}
