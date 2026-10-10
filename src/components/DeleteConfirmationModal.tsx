@@ -1,6 +1,7 @@
 import React from 'react';
 import { AlertTriangle, Trash2, X } from 'lucide-react';
 import { PatientEntry } from '../types';
+import { displayDateKey, weekdayNameDateKey } from '../utils/dateUtils';
 
 interface DeleteConfirmationModalProps {
   isOpen: boolean;
@@ -66,7 +67,9 @@ export const DeleteConfirmationModal: React.FC<DeleteConfirmationModalProps> = (
           </div>
           <div className="flex justify-between">
             <span className="text-slate-500 font-semibold">Date:</span>
-            <span className="text-slate-700">{entry.date}</span>
+            <span className="text-slate-700">
+              {weekdayNameDateKey(entry.date)} {displayDateKey(entry.date)}
+            </span>
           </div>
           <div className="flex justify-between">
             <span className="text-slate-500 font-semibold">Billed Amount:</span>

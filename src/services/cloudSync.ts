@@ -1,21 +1,23 @@
 /**
- * HISAPP — SIGN-IN CLOUD SYNC POLICY (PURE)
+ * HISAPP — CLOUD SYNC POLICY (PURE)
  * ─────────────────────────────────────────────────────────────────
- * Decides what happens to the local browser cache when a Google account
- * signs in. Google Drive is the source of truth: the freshly signed-in
- * account's Drive backup is pulled FIRST and takes priority over the local
- * cache, so a second Gmail account on a shared device never sees — or backs
- * up — the previous account's data.
- *
- * This module is pure (no I/O) so the whole policy is unit-testable.
+ * Decides how to reconcile the local browser cache with the signed-in
+ * account's legacy Google Drive snapshot. Realtime Database is the live
+ * multi-device sync source; Drive snapshots remain a recovery layer. Account
+ * switches still isolate datasets so one Gmail account never sees or backs
+ * up another account's local records.
  */
+
+import type { AuditLogEntry, PatientEntry, PatientProfile, Settlement } from '../types';
 
 export type SignInSyncAction =
   /** Replace the local cache with the signing-in account's Drive backup. */
   | 'restore-cloud'
+  /** Merge same-account Drive data with local records without discarding offline entries. */
+  | 'merge-cloud'
   /** Wipe the local cache: it belongs to a different account that has no cloud backup. */
   | 'clear-local'
-  /** Keep the local cache (it is empty, or at least as new as the cloud copy). */
+  /** Keep the local cache (it is empty, or there is no cloud copy to merge). */
   | 'keep-local';
 
 export interface SignInSyncInput {
@@ -27,11 +29,11 @@ export interface SignInSyncInput {
   dataOwnerUid: string | null;
   /** Whether the local database currently holds any records. */
   localHasData: boolean;
-  /** Whether the signing-in account's Drive holds a backup with records. */
+  /** Whether the signing-in account's Drive holds any syncable data. */
   cloudHasData: boolean;
   /** snapshotTimestamp of the newest Drive backup (0 when there is none). */
   cloudSnapshotAt: number;
-  /** The device's last known cloud sync point (0 when it never synced). */
+  /** The device's last known Drive sync point (0 when it never synced). */
   lastSyncedAt: number;
 }
 
@@ -40,6 +42,21 @@ export interface SignInSyncDecision {
   /** True when the local cache is known to belong to a different account. */
   accountSwitched: boolean;
 }
+
+/** Ledger data shared through the authenticated Firebase Realtime Database. */
+export interface SyncLedgerData {
+  patientEntries: PatientEntry[];
+  settlements: Settlement[];
+  auditLogs: AuditLogEntry[];
+  patientProfiles: PatientProfile[];
+}
+
+export const EMPTY_SYNC_LEDGER_DATA: SyncLedgerData = {
+  patientEntries: [],
+  settlements: [],
+  auditLogs: [],
+  patientProfiles: [],
+};
 
 /**
  * True when the local cache belongs to an account other than the one signing
@@ -70,9 +87,7 @@ export function decideSignInSync(input: SignInSyncInput): SignInSyncDecision {
     };
   }
 
-  // ── Same account (or a never-synced device): empty cache adopts cloud ──
-  // New device / wiped browser: restore the user's most recent Drive backup
-  // so no data is ever lost.
+  // A new device or wiped browser adopts the account's existing backup.
   if (!input.localHasData) {
     return {
       action: input.cloudHasData ? 'restore-cloud' : 'keep-local',
@@ -80,15 +95,154 @@ export function decideSignInSync(input: SignInSyncInput): SignInSyncDecision {
     };
   }
 
-  // ── Same account with local data: cloud wins only when strictly newer ──
-  // The cloud copy wins when it is newer than what this device last synced
-  // (e.g. another device of the same account backed up newer data). When the
-  // local cache is at least as new — typically offline edits made while
-  // signed out — the local cache wins and is pushed to Drive afterwards, so
-  // no offline work is ever clobbered by an older cloud snapshot.
+  // A cache already tagged to this account may contain offline or concurrent
+  // edits. Merge the Drive copy into it instead of replacing it: the live
+  // Realtime Database sync then reconciles both devices' records by ID and
+  // per-record update time.
+  if (input.dataOwnerUid === input.userUid) {
+    return {
+      action: input.cloudHasData ? 'merge-cloud' : 'keep-local',
+      accountSwitched: false,
+    };
+  }
+
+  // An unclaimed local cache can belong to another person who used the app
+  // while signed out. Preserve the account-isolation policy for that case:
+  // only adopt a newer Drive snapshot; otherwise keep the local data.
   const cloudIsNewer = input.cloudHasData && input.cloudSnapshotAt > input.lastSyncedAt;
   return {
     action: cloudIsNewer ? 'restore-cloud' : 'keep-local',
     accountSwitched: false,
   };
+}
+
+/**
+ * Merge local and remote records without dropping independent device writes.
+ * Entity IDs are stable across sync. Conflicts on the same ID use the newest
+ * `updatedAt`/`createdAt` value; exact timestamp ties use a deterministic
+ * lexical comparison so every device reaches the same result.
+ *
+ * Deletions travel as audit-log tombstones. A later save/undo can recreate a
+ * record by carrying a newer `updatedAt` than its delete event.
+ */
+export function mergeSyncLedgerData(
+  local: Partial<SyncLedgerData> | null | undefined,
+  remote: Partial<SyncLedgerData> | null | undefined
+): SyncLedgerData {
+  const auditLogs = mergeRows(
+    local?.auditLogs ?? [],
+    remote?.auditLogs ?? [],
+    (row) => row.id,
+    (row) => row.timestamp
+  );
+  const deletedEntryAt = new Map<string, number>();
+  const deletedSettlementAt = new Map<string, number>();
+
+  for (const log of auditLogs) {
+    if (log.action === 'ENTRY_DELETED' && log.targetType === 'patient_entry') {
+      deletedEntryAt.set(log.targetId, Math.max(deletedEntryAt.get(log.targetId) ?? 0, log.timestamp || 0));
+    }
+    if (log.action === 'SETTLEMENT_DELETED' && log.targetType === 'settlement') {
+      deletedSettlementAt.set(
+        log.targetId,
+        Math.max(deletedSettlementAt.get(log.targetId) ?? 0, log.timestamp || 0)
+      );
+    }
+  }
+
+  const patientEntries = mergeRows(
+    local?.patientEntries ?? [],
+    remote?.patientEntries ?? [],
+    (row) => row.id,
+    (row) => Math.max(Number(row.updatedAt) || 0, Number(row.createdAt) || 0)
+  )
+    .filter((entry) => (deletedEntryAt.get(entry.id) ?? 0) < Math.max(entry.updatedAt || 0, entry.createdAt || 0))
+    .sort((a, b) => a.date.localeCompare(b.date) || a.serial - b.serial || a.id.localeCompare(b.id));
+
+  const settlements = mergeRows(
+    local?.settlements ?? [],
+    remote?.settlements ?? [],
+    (row) => row.settlementId,
+    (row) => Number(row.createdAt) || 0
+  )
+    .filter((settlement) => (deletedSettlementAt.get(settlement.settlementId) ?? 0) < (settlement.createdAt || 0))
+    .sort((a, b) => a.settlementDate.localeCompare(b.settlementDate) || a.createdAt - b.createdAt);
+
+  const patientProfiles = mergeRows(
+    local?.patientProfiles ?? [],
+    remote?.patientProfiles ?? [],
+    (profile) => profile.id,
+    (profile) => Math.max(Number(profile.updatedAt) || 0, Number(profile.createdAt) || 0)
+  ).sort((a, b) => a.id.localeCompare(b.id));
+
+  return { patientEntries, settlements, auditLogs, patientProfiles };
+}
+
+export function isSyncLedgerDataEmpty(data: Partial<SyncLedgerData> | null | undefined): boolean {
+  return (
+    !data?.patientEntries?.length &&
+    !data?.settlements?.length &&
+    !data?.auditLogs?.length &&
+    !data?.patientProfiles?.length
+  );
+}
+
+/** Equality that ignores record-array order, as Realtime Database object order is unspecified. */
+export function syncLedgerDataEqual(
+  left: Partial<SyncLedgerData> | null | undefined,
+  right: Partial<SyncLedgerData> | null | undefined
+): boolean {
+  const a = canonicalSyncData(left);
+  const b = canonicalSyncData(right);
+  return stableStringify(a) === stableStringify(b);
+}
+
+function mergeRows<T>(
+  first: T[],
+  second: T[],
+  getId: (row: T) => string,
+  getVersion: (row: T) => number
+): T[] {
+  const merged = new Map<string, T>();
+  for (const candidate of [...first, ...second]) {
+    if (!candidate) continue;
+    const id = getId(candidate);
+    if (!id) continue;
+    const existing = merged.get(id);
+    if (!existing) {
+      merged.set(id, candidate);
+      continue;
+    }
+
+    const candidateVersion = Number(getVersion(candidate)) || 0;
+    const existingVersion = Number(getVersion(existing)) || 0;
+    if (
+      candidateVersion > existingVersion ||
+      (candidateVersion === existingVersion && stableStringify(candidate) > stableStringify(existing))
+    ) {
+      merged.set(id, candidate);
+    }
+  }
+  return Array.from(merged.values());
+}
+
+function canonicalSyncData(data: Partial<SyncLedgerData> | null | undefined): SyncLedgerData {
+  return {
+    patientEntries: [...(data?.patientEntries ?? [])].sort((a, b) => a.id.localeCompare(b.id)),
+    settlements: [...(data?.settlements ?? [])].sort((a, b) => a.settlementId.localeCompare(b.settlementId)),
+    auditLogs: [...(data?.auditLogs ?? [])].sort((a, b) => a.id.localeCompare(b.id)),
+    patientProfiles: [...(data?.patientProfiles ?? [])].sort((a, b) => a.id.localeCompare(b.id)),
+  };
+}
+
+function stableStringify(value: unknown): string {
+  if (Array.isArray(value)) return `[${value.map(stableStringify).join(',')}]`;
+  if (value && typeof value === 'object') {
+    const object = value as Record<string, unknown>;
+    return `{${Object.keys(object)
+      .sort()
+      .map((key) => `${JSON.stringify(key)}:${stableStringify(object[key])}`)
+      .join(',')}}`;
+  }
+  return JSON.stringify(value) ?? 'undefined';
 }

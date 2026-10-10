@@ -21,6 +21,7 @@ import { SettingsModal } from './components/SettingsModal';
 import { SettlementReceiptModal } from './components/SettlementReceiptModal';
 import { ToastContainer } from './components/Toast';
 import { AppBackground } from './components/AppBackground';
+import { displayDateKey, weekdayNameDateKey } from './utils/dateUtils';
 
 /** Left-to-right order of the bottom navigation — drives the slide direction
  *  of the tab change animation. */
@@ -127,7 +128,7 @@ export default function App() {
     if (!isOnline && backupStatus.pendingChanges) {
       showToast(
         'Working Offline',
-        'Changes are saved locally and will back up to Google Drive when you reconnect.',
+        'Changes are saved locally and will sync across your devices and back up to Google Drive when you reconnect.',
         'info'
       );
     }
@@ -188,7 +189,7 @@ export default function App() {
     // Offer an Undo action so an accidental delete can be reversed
     showToast(
       'Record Deleted',
-      `Removed visit of ${deletedEntry.patientName} (${deletedEntry.date})`,
+      `Removed visit of ${deletedEntry.patientName} (${weekdayNameDateKey(deletedEntry.date)} ${displayDateKey(deletedEntry.date)})`,
       'info',
       {
         duration: 10000,
@@ -197,8 +198,9 @@ export default function App() {
           onClick: () => {
             void (async () => {
               try {
-                await savePatientEntry(deletedEntry);
-                setEntries((prev) => [deletedEntry, ...prev]);
+                const restoredEntry = { ...deletedEntry, updatedAt: Date.now() };
+                await savePatientEntry(restoredEntry);
+                setEntries((prev) => [restoredEntry, ...prev]);
                 backupEngine.onDataChanged();
                 showToast(
                   'Record Restored',
@@ -352,7 +354,10 @@ export default function App() {
             handleSettingsSaved(updated);
             if (enabled) backupEngine.onDataChanged();
           }}
-          onDataImported={() => void refreshData()}
+          onDataImported={() => {
+            void refreshData();
+            backupEngine.onDataChanged();
+          }}
           showToast={showToast}
         />
       )}

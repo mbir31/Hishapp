@@ -15,6 +15,7 @@ import {
 } from 'lucide-react';
 import { ClinicSettings, PatientEntry, Settlement } from '../types';
 import { exportMonthlySummaryPDF, generateMonthlySummaryData } from '../utils/pdfExport';
+import { todayDateKey } from '../utils/dateUtils';
 
 interface MonthlySummaryModalProps {
   isOpen: boolean;
@@ -40,7 +41,7 @@ export const MonthlySummaryModal: React.FC<MonthlySummaryModalProps> = ({
   // Determine list of available months from entries and settlements, default to current month
   const availableMonths = useMemo(() => {
     const monthSet = new Set<string>();
-    const currentMonth = new Date().toISOString().substring(0, 7);
+    const currentMonth = todayDateKey().substring(0, 7);
     monthSet.add(currentMonth);
 
     entries.forEach((e) => {
@@ -59,7 +60,7 @@ export const MonthlySummaryModal: React.FC<MonthlySummaryModalProps> = ({
   }, [entries, settlements]);
 
   const [selectedMonth, setSelectedMonth] = useState<string>(() => {
-    return availableMonths[0] || new Date().toISOString().substring(0, 7);
+    return availableMonths[0] || todayDateKey().substring(0, 7);
   });
 
   const [isExporting, setIsExporting] = useState<boolean>(false);

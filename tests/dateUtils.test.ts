@@ -2,12 +2,14 @@ import assert from 'node:assert/strict';
 import { test } from 'node:test';
 import {
   describeDateKey,
+  displayDateKey,
   formatDateKey,
   nextDateKey,
   parseDateKey,
   previousDateKey,
   shiftDateKey,
   todayDateKey,
+  weekdayNameDateKey,
 } from '../src/utils/dateUtils';
 
 test('the arrow buttons step one day back and forward', () => {
@@ -50,4 +52,11 @@ test('multi-day jumps and the readable label', () => {
   assert.equal(shiftDateKey('2026-10-10', 7), '2026-10-17');
   assert.equal(describeDateKey('2026-10-10'), 'Sat, 10 Oct 2026');
   assert.equal(describeDateKey('nonsense'), '');
+});
+
+test('date selector display uses DD-MM-YYYY and full English weekday names', () => {
+  assert.equal(displayDateKey('2026-10-15'), '15-10-2026');
+  assert.equal(weekdayNameDateKey('2026-10-15'), 'Thursday');
+  assert.equal(displayDateKey('2026-02-31'), '');
+  assert.equal(weekdayNameDateKey('not-a-date'), '');
 });

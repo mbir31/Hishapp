@@ -6,6 +6,8 @@ import {
   withFollowUpProcedure,
 } from '../utils/followUp';
 import { isLegacyDemoEntry, isLegacyDemoProfile, isLegacyDemoSettlement } from './legacyDemoData';
+import { mergeSyncLedgerData, syncLedgerDataEqual, type SyncLedgerData } from '../services/cloudSync';
+import { todayDateKey } from '../utils/dateUtils';
 
 const DB_NAME = 'DentalIncomeTrackerDB';
 const DB_VERSION = 3;
@@ -152,35 +154,35 @@ export async function getNextSerial(): Promise<number> {
 export async function savePatientEntry(entry: PatientEntry): Promise<PatientEntry> {
   const { store, tx } = await getStore('patient_entries', 'readwrite');
   
-  // Check if updating or creating for audit trail
+  // Check if updating or creating for audit trail. Waiting for this write
+  // makes delete tombstones and entry revisions available to cloud sync.
+  let auditWrite: Promise<AuditLogEntry> | null = null;
   const existingReq = store.get(entry.id);
   existingReq.onsuccess = () => {
     const existing = existingReq.result as PatientEntry | undefined;
-    if (existing) {
-      logAudit({
-        action: 'ENTRY_EDITED',
-        targetId: entry.id,
-        targetType: 'patient_entry',
-        details: `Edited record for ${entry.patientName} (${entry.procedure}) - Bill: ৳${entry.receivedAmount}, Share: ৳${entry.doctorShare}`,
-        previousData: existing,
-        newData: entry,
-      });
-    } else {
-      logAudit({
-        action: 'ENTRY_CREATED',
-        targetId: entry.id,
-        targetType: 'patient_entry',
-        details: `Created record #${entry.serial} for ${entry.patientName} (${entry.procedure}) - Bill: ৳${entry.receivedAmount}`,
-        newData: entry,
-      });
-    }
+    auditWrite = existing
+      ? logAudit({
+          action: 'ENTRY_EDITED',
+          targetId: entry.id,
+          targetType: 'patient_entry',
+          details: `Edited record for ${entry.patientName} (${entry.procedure}) - Bill: ৳${entry.receivedAmount}, Share: ৳${entry.doctorShare}`,
+          previousData: existing,
+          newData: entry,
+        })
+      : logAudit({
+          action: 'ENTRY_CREATED',
+          targetId: entry.id,
+          targetType: 'patient_entry',
+          details: `Created record #${entry.serial} for ${entry.patientName} (${entry.procedure}) - Bill: ৳${entry.receivedAmount}`,
+          newData: entry,
+        });
   };
 
   return new Promise((resolve, reject) => {
     store.put(entry);
     tx.oncomplete = async () => {
-      // Automatically create or update the patient's profile
       try {
+        await auditWrite;
         await updateProfileForPatient(entry.patientName);
       } catch (err) {
         console.warn('Auto profile update notice:', err);
@@ -188,21 +190,24 @@ export async function savePatientEntry(entry: PatientEntry): Promise<PatientEntr
       resolve(entry);
     };
     tx.onerror = () => reject(tx.error);
+    tx.onabort = () => reject(tx.error);
   });
 }
 
 export async function deletePatientEntry(id: string): Promise<void> {
   const { store, tx } = await getStore('patient_entries', 'readwrite');
   let deletedPatientName: string | null = null;
+  let auditWrite: Promise<AuditLogEntry> | null = null;
   const getReq = store.get(id);
   getReq.onsuccess = () => {
     const existing = getReq.result as PatientEntry | undefined;
     if (existing) {
       deletedPatientName = existing.patientName;
-      logAudit({
+      auditWrite = logAudit({
         action: 'ENTRY_DELETED',
         targetId: id,
         targetType: 'patient_entry',
+        timestamp: Math.max(Date.now(), (existing.updatedAt || existing.createdAt || 0) + 1),
         details: `Deleted record of ${existing.patientName} (${existing.procedure}) dated ${existing.date} - Bill: ৳${existing.receivedAmount}`,
         previousData: existing,
       });
@@ -212,16 +217,16 @@ export async function deletePatientEntry(id: string): Promise<void> {
   return new Promise((resolve, reject) => {
     store.delete(id);
     tx.oncomplete = async () => {
-      if (deletedPatientName) {
-        try {
-          await updateProfileForPatient(deletedPatientName);
-        } catch (err) {
-          console.warn('Auto profile recalculation after delete notice:', err);
-        }
+      try {
+        await auditWrite;
+        if (deletedPatientName) await updateProfileForPatient(deletedPatientName);
+      } catch (err) {
+        console.warn('Auto profile recalculation after delete notice:', err);
       }
       resolve();
     };
     tx.onerror = () => reject(tx.error);
+    tx.onabort = () => reject(tx.error);
   });
 }
 
@@ -358,12 +363,23 @@ export async function syncAllPatientProfiles(): Promise<PatientProfile[]> {
   const namesMap = new Map<string, string>();
   allEntries.forEach((e) => {
     const norm = normalizePatientName(e.patientName);
-    if (norm) {
-      if (!namesMap.has(norm)) {
-        namesMap.set(norm, e.patientName.trim());
-      }
-    }
+    if (norm && !namesMap.has(norm)) namesMap.set(norm, e.patientName.trim());
   });
+
+  // A remote delete can remove a patient's final visit. Drop that now-orphaned
+  // index too, matching the normal single-entry delete path.
+  const orphanProfiles = (await getAllPatientProfiles()).filter(
+    (profile) => !namesMap.has(normalizePatientName(profile.name))
+  );
+  if (orphanProfiles.length > 0) {
+    const { store, tx } = await getStore('patient_profiles', 'readwrite');
+    orphanProfiles.forEach((profile) => store.delete(profile.id));
+    await new Promise<void>((resolve, reject) => {
+      tx.oncomplete = () => resolve();
+      tx.onerror = () => reject(tx.error);
+      tx.onabort = () => reject(tx.error);
+    });
+  }
 
   for (const rawName of namesMap.values()) {
     await updateProfileForPatient(rawName);
@@ -407,14 +423,28 @@ export async function deleteSettlement(settlementId: string): Promise<void> {
   const settlementStore = tx.objectStore('settlements');
   const patientStore = tx.objectStore('patient_entries');
 
-  // Find entries that had this settlementId and revert them to Pending
+  // Find entries that had this settlementId and revert them to Pending.
+  // Updating the record version lets that reversal win during multi-device sync.
   const allEntriesReq = patientStore.getAll();
+  const settlementReq = settlementStore.get(settlementId);
+  let auditWrite: Promise<AuditLogEntry> | null = null;
+  settlementReq.onsuccess = () => {
+    const existing = settlementReq.result as Settlement | undefined;
+    auditWrite = logAudit({
+      action: 'SETTLEMENT_DELETED',
+      targetId: settlementId,
+      targetType: 'settlement',
+      timestamp: Math.max(Date.now(), (existing?.createdAt || 0) + 1),
+      details: `Deleted settlement batch ${settlementId} - Associated patients reverted to Pending`,
+    });
+  };
   allEntriesReq.onsuccess = () => {
     const entries = allEntriesReq.result as PatientEntry[];
     for (const entry of entries) {
       if (entry.settlementId === settlementId) {
         entry.settlementStatus = 'Pending';
         entry.settlementId = null;
+        entry.updatedAt = Math.max(Date.now(), (entry.updatedAt || entry.createdAt || 0) + 1);
         patientStore.put(entry);
       }
     }
@@ -422,16 +452,25 @@ export async function deleteSettlement(settlementId: string): Promise<void> {
 
   settlementStore.delete(settlementId);
 
-  logAudit({
-    action: 'SETTLEMENT_DELETED',
-    targetId: settlementId,
-    targetType: 'settlement',
-    details: `Deleted settlement batch ${settlementId} - Associated patients reverted to Pending`,
-  });
-
   return new Promise((resolve, reject) => {
-    tx.oncomplete = () => resolve();
-    tx.onerror = () => reject(tx.error);
+    tx.oncomplete = async () => {
+      try {
+        await auditWrite;
+      } catch (err) {
+        console.warn('Could not persist settlement deletion audit event:', err);
+      } finally {
+        db.close();
+      }
+      resolve();
+    };
+    tx.onerror = () => {
+      db.close();
+      reject(tx.error);
+    };
+    tx.onabort = () => {
+      db.close();
+      reject(tx.error);
+    };
   });
 }
 
@@ -485,11 +524,12 @@ export async function executeSettlement(params: {
   const patientStore = tx.objectStore('patient_entries');
   const settlementStore = tx.objectStore('settlements');
 
-  const todayStr = new Date().toISOString().split('T')[0];
+  const todayStr = todayDateKey();
   const dateCompact = todayStr.replace(/-/g, '');
 
   // Count existing settlements for today to build batch ID ST-YYYYMMDD-01
   const allSettlementsReq = settlementStore.getAll();
+  let auditWrite: Promise<AuditLogEntry> | null = null;
 
   return new Promise((resolve, reject) => {
     allSettlementsReq.onsuccess = () => {
@@ -542,7 +582,7 @@ export async function executeSettlement(params: {
 
         settlementStore.put(newSettlement);
 
-        logAudit({
+        auditWrite = logAudit({
           action: 'SETTLEMENT_CREATED',
           targetId: settlementId,
           targetType: 'settlement',
@@ -550,8 +590,16 @@ export async function executeSettlement(params: {
           newData: newSettlement,
         });
 
-        tx.oncomplete = () => resolve(newSettlement);
+        tx.oncomplete = async () => {
+          try {
+            await auditWrite;
+          } catch (err) {
+            console.warn('Could not persist settlement creation audit event:', err);
+          }
+          resolve(newSettlement);
+        };
         tx.onerror = () => reject(tx.error);
+        tx.onabort = () => reject(tx.error);
       };
       entriesReq.onerror = () => reject(entriesReq.error);
     };
@@ -892,12 +940,13 @@ export async function exportAllDataCSV(): Promise<{ patientEntriesCSV: string; s
 // ---------------- Audit Logs Store ---------------- //
 
 export async function logAudit(
-  entry: Omit<AuditLogEntry, 'id' | 'timestamp'>
+  entry: Omit<AuditLogEntry, 'id' | 'timestamp'> & { timestamp?: number }
 ): Promise<AuditLogEntry> {
+  const { timestamp, ...auditFields } = entry;
   const auditItem: AuditLogEntry = {
     id: `audit-${Date.now()}-${Math.random().toString(36).substring(2, 7)}`,
-    timestamp: Date.now(),
-    ...entry,
+    timestamp: timestamp ?? Date.now(),
+    ...auditFields,
   };
   try {
     const { store, tx } = await getStore('audit_logs', 'readwrite');
@@ -936,6 +985,90 @@ export async function clearAuditLogs(): Promise<void> {
     tx.oncomplete = () => resolve();
     tx.onerror = () => reject(tx.error);
   });
+}
+
+// ---------------- Multi-device Cloud Sync ---------------- //
+
+/** A local sync snapshot used by the Realtime Database transport. */
+export async function getSyncLedgerData(): Promise<SyncLedgerData> {
+  const [patientEntries, settlements, auditLogs, patientProfiles] = await Promise.all([
+    getAllPatientEntries(),
+    getAllSettlements(),
+    getAllAuditLogs(),
+    getAllPatientProfiles(),
+  ]);
+  return { patientEntries, settlements, auditLogs, patientProfiles };
+}
+
+/**
+ * Merge a remote snapshot into IndexedDB atomically. Independent records are
+ * unioned; the shared pure merge policy resolves same-ID edits and applies
+ * deletion tombstones carried in the audit log.
+ */
+export async function mergeRemoteSyncData(
+  remote: Partial<SyncLedgerData> | null | undefined
+): Promise<boolean> {
+  const db = await openDB();
+  let changed = false;
+
+  try {
+    await new Promise<void>((resolve, reject) => {
+      const tx = db.transaction(
+        ['patient_entries', 'settlements', 'patient_profiles', 'audit_logs'],
+        'readwrite'
+      );
+      const entryStore = tx.objectStore('patient_entries');
+      const settlementStore = tx.objectStore('settlements');
+      const profileStore = tx.objectStore('patient_profiles');
+      const auditStore = tx.objectStore('audit_logs');
+      const entriesReq = entryStore.getAll() as IDBRequest<PatientEntry[]>;
+      const settlementsReq = settlementStore.getAll() as IDBRequest<Settlement[]>;
+      const profilesReq = profileStore.getAll() as IDBRequest<PatientProfile[]>;
+      const auditReq = auditStore.getAll() as IDBRequest<AuditLogEntry[]>;
+      let readsRemaining = 4;
+
+      const reconcile = () => {
+        readsRemaining -= 1;
+        if (readsRemaining > 0) return;
+
+        const local: SyncLedgerData = {
+          patientEntries: entriesReq.result || [],
+          settlements: settlementsReq.result || [],
+          auditLogs: auditReq.result || [],
+          patientProfiles: profilesReq.result || [],
+        };
+        const merged = mergeSyncLedgerData(local, remote);
+        changed = !syncLedgerDataEqual(local, merged);
+        if (!changed) return;
+
+        entryStore.clear();
+        settlementStore.clear();
+        profileStore.clear();
+        auditStore.clear();
+        merged.patientEntries.forEach((entry) => entryStore.put(entry));
+        merged.settlements.forEach((settlement) => settlementStore.put(settlement));
+        merged.patientProfiles.forEach((profile) => profileStore.put(profile));
+        merged.auditLogs.forEach((log) => auditStore.put(log));
+      };
+
+      entriesReq.onsuccess = reconcile;
+      settlementsReq.onsuccess = reconcile;
+      profilesReq.onsuccess = reconcile;
+      auditReq.onsuccess = reconcile;
+      entriesReq.onerror = () => reject(entriesReq.error);
+      settlementsReq.onerror = () => reject(settlementsReq.error);
+      profilesReq.onerror = () => reject(profilesReq.error);
+      auditReq.onerror = () => reject(auditReq.error);
+      tx.oncomplete = () => resolve();
+      tx.onerror = () => reject(tx.error);
+      tx.onabort = () => reject(tx.error);
+    });
+  } finally {
+    db.close();
+  }
+
+  if (changed) await syncAllPatientProfiles();
+  return changed;
 }
 
 // ---------------- Google Drive Restore ---------------- //

@@ -69,6 +69,24 @@ export function nextDateKey(key: string | null | undefined): string | null {
   return shiftDateKey(key, 1);
 }
 
+/** Full English weekday for a date key (never dependent on browser locale). */
+export function weekdayNameDateKey(key: string | null | undefined): string {
+  const parsed = parseDateKey(key);
+  if (!parsed) return '';
+  return ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'][
+    parsed.getDay()
+  ];
+}
+
+/** User-facing `DD-MM-YYYY` label; storage remains the ISO `YYYY-MM-DD` key. */
+export function displayDateKey(key: string | null | undefined): string {
+  const parsed = parseDateKey(key);
+  if (!parsed) return '';
+  const day = String(parsed.getDate()).padStart(2, '0');
+  const month = String(parsed.getMonth() + 1).padStart(2, '0');
+  return `${day}-${month}-${String(parsed.getFullYear()).padStart(4, '0')}`;
+}
+
 /** Human-readable label for a date key, e.g. `Fri, 10 Oct 2026`. */
 export function describeDateKey(key: string | null | undefined): string {
   const parsed = parseDateKey(key);

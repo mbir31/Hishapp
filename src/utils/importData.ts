@@ -14,6 +14,7 @@
  * invalid rows are skipped and reported via `skippedRows`.
  */
 import { ClinicSettings, PatientEntry, Settlement } from '../types';
+import { todayDateKey } from './dateUtils';
 
 export interface ImportResult {
   patientEntries: PatientEntry[];
@@ -43,7 +44,7 @@ function coerceEntry(raw: any, index: number): PatientEntry | null {
   const patientName = toText(raw.patientName ?? raw.patient ?? raw['Patient Name / ID']);
   if (!patientName) return null;
 
-  const date = toText(raw.date) || new Date().toISOString().split('T')[0];
+  const date = toText(raw.date) || todayDateKey();
   const receivedAmount = Math.max(0, toNumber(raw.receivedAmount ?? raw.amount ?? raw['Received Amount']));
   const doctorShare = Math.max(
     0,

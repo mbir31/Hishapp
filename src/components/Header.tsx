@@ -9,7 +9,7 @@ interface HeaderProps {
   isOnline: boolean;
   backup: BackupStatus;
   onOpenSettings: () => void;
-  /** Tap-to-sync: pushes the current local data to Google Drive right now. */
+  /** One-tap live sync plus a Google Drive recovery snapshot when authorized. */
   onSyncNow: () => void;
 }
 
@@ -17,12 +17,10 @@ function BackupPill({
   backup,
   isOnline,
   onSyncNow,
-  onOpenSettings,
 }: {
   backup: BackupStatus;
   isOnline: boolean;
   onSyncNow: () => void;
-  onOpenSettings: () => void;
 }) {
   const { phase, isConfigured } = backup;
   const pillBase =
@@ -32,9 +30,10 @@ function BackupPill({
     return (
       <button
         type="button"
-        onClick={onOpenSettings}
+        onClick={onSyncNow}
         className={`${pillBase} hidden sm:flex bg-slate-100 text-slate-500 border border-slate-200 hover:bg-slate-200/70 cursor-pointer`}
-        title="Cloud backup not configured — open Settings to connect Firebase"
+        title="Cloud sync is not configured — tapping will show setup guidance"
+        aria-label="Sync cloud data"
       >
         <CloudOff className="w-3.5 h-3.5" />
         <span>Local Only</span>
@@ -49,10 +48,10 @@ function BackupPill({
         onClick={onSyncNow}
         disabled
         className={`${pillBase} bg-indigo-50 text-indigo-700 border border-indigo-200 disabled:opacity-80 cursor-default`}
-        title="Backing up to your Google Drive..."
+        title="Syncing your cloud records and saving a backup..."
       >
         <RefreshCw className="w-3.5 h-3.5 animate-spin" />
-        <span className="hidden sm:inline">Backing Up...</span>
+        <span className="hidden sm:inline">Syncing...</span>
       </button>
     );
   }
@@ -75,9 +74,10 @@ function BackupPill({
     return (
       <button
         type="button"
-        onClick={onOpenSettings}
+        onClick={onSyncNow}
         className={`${pillBase} bg-slate-100 text-slate-600 border border-slate-200 hover:bg-slate-200/70 cursor-pointer`}
-        title="Sign in from Settings to enable Google Drive cloud backup"
+        title={isOnline ? 'Tap to sync cloud data now' : 'Reconnect to the internet before syncing'}
+        aria-label="Sync cloud data"
       >
         <CloudOff className="w-3.5 h-3.5 text-slate-400" />
         <span className="hidden sm:inline">Backup Off</span>
@@ -203,12 +203,7 @@ export const Header: React.FC<HeaderProps> = ({
           <InstallAppButton />
 
           {/* Google Drive Cloud Backup Status — tap to sync now */}
-          <BackupPill
-            backup={backup}
-            isOnline={isOnline}
-            onSyncNow={onSyncNow}
-            onOpenSettings={onOpenSettings}
-          />
+          <BackupPill backup={backup} isOnline={isOnline} onSyncNow={onSyncNow} />
 
           {/* Live Online/Offline Status Pill */}
           <div

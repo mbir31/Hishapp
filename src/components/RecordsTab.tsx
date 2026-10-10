@@ -24,6 +24,8 @@ import { deletePatientEntry, savePatientEntry, getAllPatientProfiles } from '../
 import { PatientHistoryModal } from './PatientHistoryModal';
 import { DeleteConfirmationModal } from './DeleteConfirmationModal';
 import { AuditLogModal } from './AuditLogModal';
+import { DateSelector } from './DateSelector';
+import { displayDateKey, todayDateKey, weekdayNameDateKey } from '../utils/dateUtils';
 
 interface RecordsTabProps {
   entries: PatientEntry[];
@@ -47,6 +49,10 @@ export const RecordsTab: React.FC<RecordsTabProps> = ({
   const [viewMode, setViewMode] = useState<'visits' | 'profiles'>('visits');
   const [searchQuery, setSearchQuery] = useState<string>('');
   const [statusFilter, setStatusFilter] = useState<'All' | 'Pending' | 'Settled'>('All');
+  const [selectedDate, setSelectedDate] = useState<string>(() => todayDateKey());
+  // Keep the existing all-records ledger as the default; selecting a date
+  // turns on the day filter, and this control restores the complete ledger.
+  const [isDateFilterEnabled, setIsDateFilterEnabled] = useState<boolean>(false);
   const [editingEntry, setEditingEntry] = useState<PatientEntry | null>(null);
 
   // Stored profiles from database
@@ -162,6 +168,11 @@ export const RecordsTab: React.FC<RecordsTabProps> = ({
   // Filtered entries for visits view
   const filteredEntries = useMemo(() => {
     return entries.filter((entry) => {
+      // Optional single-day review filter
+      if (isDateFilterEnabled && entry.date !== selectedDate) {
+        return false;
+      }
+
       // Status filter
       if (statusFilter !== 'All' && entry.settlementStatus !== statusFilter) {
         return false;
@@ -182,7 +193,7 @@ export const RecordsTab: React.FC<RecordsTabProps> = ({
 
       return true;
     });
-  }, [entries, statusFilter, searchQuery]);
+  }, [entries, statusFilter, searchQuery, isDateFilterEnabled, selectedDate]);
 
   // Aggregate stats of filtered entries
   const stats = useMemo(() => {
@@ -235,6 +246,35 @@ export const RecordsTab: React.FC<RecordsTabProps> = ({
 
   return (
     <div className="max-w-3xl mx-auto space-y-4 pb-24 animate-in fade-in duration-200">
+      {viewMode === 'visits' && (
+        <section className="flex flex-col items-center gap-2" aria-label="Filter records by date">
+          <DateSelector
+            value={selectedDate}
+            ariaLabel="Records date"
+            onChange={(date) => {
+              setSelectedDate(date);
+              setIsDateFilterEnabled(true);
+            }}
+          />
+          <div className="flex items-center gap-2">
+            <p className="text-[10px] font-semibold text-slate-500">
+              {isDateFilterEnabled
+                ? `Showing records for ${weekdayNameDateKey(selectedDate)} ${displayDateKey(selectedDate)}`
+                : 'Showing records from all dates'}
+            </p>
+            {isDateFilterEnabled && (
+              <button
+                type="button"
+                onClick={() => setIsDateFilterEnabled(false)}
+                className="rounded-full border border-white/80 bg-white/60 px-2.5 py-1 text-[10px] font-bold text-indigo-700 shadow-sm transition hover:bg-white active:scale-95"
+              >
+                All Dates
+              </button>
+            )}
+          </div>
+        </section>
+      )}
+
       {/* Search Bar & Filter Header */}
       <div className="ios-glass-card rounded-3xl p-4 sm:p-5 space-y-3">
         {/* View Mode Switcher: Visits Ledger vs Patient Profiles */}
@@ -410,10 +450,10 @@ export const RecordsTab: React.FC<RecordsTabProps> = ({
                       <div className="flex items-center gap-3 text-[10.5px] text-slate-400 pt-0.5">
                         <span className="flex items-center gap-1">
                           <Clock className="w-3 h-3 text-slate-400" />
-                          Last: {prof.lastVisitDate}
+                          Last: {weekdayNameDateKey(prof.lastVisitDate)} {displayDateKey(prof.lastVisitDate)}
                         </span>
                         {prof.firstVisitDate !== prof.lastVisitDate && (
-                          <span>First: {prof.firstVisitDate}</span>
+                          <span>First: {weekdayNameDateKey(prof.firstVisitDate)} {displayDateKey(prof.firstVisitDate)}</span>
                         )}
                       </div>
                     </div>
@@ -518,7 +558,7 @@ export const RecordsTab: React.FC<RecordsTabProps> = ({
                     <div className="flex items-center gap-3 text-[11px] text-slate-400 flex-wrap">
                       <span className="flex items-center gap-1">
                         <Calendar className="w-3 h-3" />
-                        {entry.date}
+                        {weekdayNameDateKey(entry.date)} {displayDateKey(entry.date)}
                       </span>
                       {entry.remarks && (
                         <span className="text-slate-500 italic truncate max-w-xs">
