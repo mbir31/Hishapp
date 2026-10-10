@@ -9,12 +9,14 @@ import {
   Save,
   LogIn,
   LogOut,
-  RotateCcw,
-  FileSpreadsheet,
   Loader2,
   AlertTriangle,
   CheckCircle2,
   Clock,
+  ShieldCheck,
+  KeyRound,
+  Smartphone,
+  Lock,
 } from 'lucide-react';
 import { ClinicSettings } from '../types';
 import {
@@ -43,11 +45,10 @@ interface SettingsModalProps {
   settings: ClinicSettings;
   backup: BackupStatus;
   onSaveSettings: (settings: ClinicSettings) => void;
-  onBackupSignIn: () => Promise<any>;
-  onBackupReconnectDrive: () => Promise<unknown>;
-  onBackupSignOut: () => Promise<void>;
+  onVaultLogin: (phone: string, pin: string) => Promise<any>;
+  onVaultSignOut: () => Promise<void>;
+  onVaultChangePin: (oldPin: string, newPin: string) => Promise<void>;
   onBackupNow: () => Promise<any>;
-  onRestoreFromDrive: () => Promise<any>;
   onToggleAutoBackup: (enabled: boolean) => void;
   onDataImported?: () => void;
   showToast: (title: string, desc?: string, type?: 'success' | 'info' | 'warning' | 'error') => void;
@@ -59,11 +60,10 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
   settings,
   backup,
   onSaveSettings,
-  onBackupSignIn,
-  onBackupReconnectDrive,
-  onBackupSignOut,
+  onVaultLogin,
+  onVaultSignOut,
+  onVaultChangePin,
   onBackupNow,
-  onRestoreFromDrive,
   onToggleAutoBackup,
   onDataImported,
   showToast,
@@ -76,6 +76,18 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
   const [isSaving, setIsSaving] = useState<boolean>(false);
   const [isAuditModalOpen, setIsAuditModalOpen] = useState<boolean>(false);
   const [showIOSPrompt, setShowIOSPrompt] = useState<boolean>(false);
+
+  // Vault login state
+  const [phoneInput, setPhoneInput] = useState<string>('');
+  const [pinInput, setPinInput] = useState<string>('');
+  const [isLoggingIn, setIsLoggingIn] = useState<boolean>(false);
+
+  // Change PIN state
+  const [showChangePin, setShowChangePin] = useState<boolean>(false);
+  const [oldPinInput, setOldPinInput] = useState<string>('');
+  const [newPinInput, setNewPinInput] = useState<string>('');
+  const [confirmPinInput, setConfirmPinInput] = useState<string>('');
+  const [isSavingPin, setIsSavingPin] = useState<boolean>(false);
 
   // File import state (restore from JSON / CSV backup files)
   const [importConfirm, setImportConfirm] = useState<ImportResult | null>(null);
@@ -95,6 +107,66 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
   }, [settings]);
 
   if (!isOpen) return null;
+
+  const handleVaultLogin = async (e: React.FormEvent) => {
+    e.preventDefault();
+    const cleanPhone = phoneInput.replace(/\D/g, '').trim();
+    if (cleanPhone.length !== 11) {
+      showToast('ভুল মোবাইল নম্বর', 'অনুগ্রহ করে ১১ ডিজিটের মোবাইল নম্বর দিন (যেমন: 017XXXXXXXX)', 'warning');
+      return;
+    }
+    const cleanPin = pinInput.trim();
+    if (cleanPin.length !== 4) {
+      showToast('ভুল পিন নম্বর', 'পিন অবশ্যই ৪ ডিজিটের হতে হবে (যেমন: 1234)', 'warning');
+      return;
+    }
+
+    setIsLoggingIn(true);
+    try {
+      const session = await onVaultLogin(cleanPhone, cleanPin);
+      showToast(
+        session.isNew ? 'নতুন ক্লাউড ভল্ট তৈরি হয়েছে!' : 'ক্লাউড ভল্ট আনলক হয়েছে!',
+        `মোবাইল নম্বর: ${cleanPhone}`,
+        'success'
+      );
+      setPhoneInput('');
+      setPinInput('');
+    } catch (err: any) {
+      showToast('ভল্ট এরর', err?.message || 'লগইন ব্যর্থ হয়েছে', 'error');
+    } finally {
+      setIsLoggingIn(false);
+    }
+  };
+
+  const handleChangePin = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (oldPinInput.trim().length !== 4) {
+      showToast('ভুল বর্তমান পিন', 'বর্তমান পিন ৪ ডিজিটের হতে হবে', 'warning');
+      return;
+    }
+    if (newPinInput.trim().length !== 4) {
+      showToast('ভুল নতুন পিন', 'নতুন পিন ৪ ডিজিটের হতে হবে', 'warning');
+      return;
+    }
+    if (newPinInput.trim() !== confirmPinInput.trim()) {
+      showToast('পিন মিলেনি', 'নতুন পিন এবং নিশ্চিতকরণ পিন একই হতে হবে', 'warning');
+      return;
+    }
+
+    setIsSavingPin(true);
+    try {
+      await onVaultChangePin(oldPinInput.trim(), newPinInput.trim());
+      showToast('পিন সফলভাবে পরিবর্তন হয়েছে!', 'আপনার নতুন ৪ ডিজিটের পিন সংরক্ষিত হয়েছে', 'success');
+      setShowChangePin(false);
+      setOldPinInput('');
+      setNewPinInput('');
+      setConfirmPinInput('');
+    } catch (err: any) {
+      showToast('পিন পরিবর্তন ব্যর্থ', err?.message || 'অনুগ্রহ করে সঠিক বর্তমান পিন দিন', 'error');
+    } finally {
+      setIsSavingPin(false);
+    }
+  };
 
   const handleLogoFileUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
@@ -162,304 +234,262 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
   const handleExportJSON = async () => {
     try {
       const json = await exportAllDataJSON();
-      const dateStr = todayDateKey();
-      downloadFile(json, `dental_income_tracker_backup_${dateStr}.json`, 'application/json');
-      showToast('JSON Export Complete', 'All patient visits & settlements saved to disk', 'success');
+      downloadFile(
+        json,
+        `Hisapp_Data_Backup_${todayDateKey()}.json`,
+        'application/json;charset=utf-8;'
+      );
+      showToast('JSON Backup Ready', 'Complete database exported safely to your device', 'success');
     } catch (err: any) {
-      showToast('Export Failed', err?.message, 'error');
+      showToast('Export failed', err?.message, 'error');
     }
   };
 
   const handleExportCSV = async () => {
     try {
       const { patientEntriesCSV, settlementsCSV } = await exportAllDataCSV();
-      const dateStr = todayDateKey();
       downloadFile(
         patientEntriesCSV,
-        `Patient_Entries_${dateStr}.csv`,
+        `Hisapp_Patient_Entries_${todayDateKey()}.csv`,
         'text/csv;charset=utf-8;'
       );
       setTimeout(() => {
         downloadFile(
           settlementsCSV,
-          `Settlements_${dateStr}.csv`,
+          `Hisapp_Settlements_${todayDateKey()}.csv`,
           'text/csv;charset=utf-8;'
         );
-      }, 500);
-      showToast('CSV Export Complete', 'Patient Entries and Settlements CSV downloaded', 'success');
+      }, 400);
+      showToast('CSV Exports Ready', 'Patient entries and settlements downloaded', 'success');
     } catch (err: any) {
-      showToast('Export Failed', err?.message, 'error');
+      showToast('Export failed', err?.message, 'error');
     }
   };
 
-  // ── File Import (restore from JSON / CSV backup) ─────────────────
-
-  const handleImportFiles = async (files: FileList | null, kind: 'json' | 'csv') => {
+  const handleImportFiles = async (
+    files: FileList | null,
+    format: 'json' | 'csv'
+  ) => {
     if (!files || files.length === 0) return;
-
     try {
-      if (kind === 'json') {
-        const text = await files[0].text();
-        const result = parseJSONBackup(text, files[0].name);
-        if (result.patientEntries.length === 0 && result.settlements.length === 0) {
-          showToast('Nothing to Import', 'The selected JSON file has no patient entries or settlements', 'warning');
-          return;
-        }
-        setImportConfirm(result);
+      let result: ImportResult;
+      if (format === 'json') {
+        const file = files[0];
+        const text = await file.text();
+        result = parseJSONBackup(text, file.name);
       } else {
-        const texts = await Promise.all(
-          Array.from(files).map(async (f) => ({ name: f.name, text: await f.text() }))
+        const loadedFiles = await Promise.all(
+          Array.from(files).map(async (f) => ({
+            name: f.name,
+            text: await f.text(),
+          }))
         );
-        const result = parseCSVFiles(texts);
-        if (result.patientEntries.length === 0) {
-          showToast(
-            'Nothing to Import',
-            'No valid patient entries found in the selected CSV file(s)',
-            'warning'
-          );
-          return;
-        }
-        setImportConfirm(result);
+        result = parseCSVFiles(loadedFiles);
       }
+      setImportConfirm(result);
     } catch (err: any) {
-      showToast('Import Failed', err?.message || 'Could not read the selected file', 'error');
+      showToast('Import Failed', err?.message || 'Could not parse the selected file(s)', 'error');
     } finally {
-      // Reset the input so the same file can be selected again
-      if (kind === 'json' && jsonFileRef.current) jsonFileRef.current.value = '';
-      if (kind === 'csv' && csvFileRef.current) csvFileRef.current.value = '';
+      if (jsonFileRef.current) jsonFileRef.current.value = '';
+      if (csvFileRef.current) csvFileRef.current.value = '';
     }
   };
 
   const handleConfirmImport = async () => {
     if (!importConfirm) return;
-
+    setIsImporting(true);
     try {
-      setIsImporting(true);
-
-      // Safety net: download a snapshot of the CURRENT data before replacing it
       try {
-        const json = await exportAllDataJSON();
-        const dateStr = todayDateKey();
+        const safetyBackup = await exportAllDataJSON();
         downloadFile(
-          json,
-          `dental_income_tracker_before_import_${dateStr}.json`,
-          'application/json'
+          safetyBackup,
+          `Hisapp_Safety_Before_Import_${todayDateKey()}.json`,
+          'application/json;charset=utf-8;'
         );
-      } catch (backupErr) {
-        console.warn('Pre-import safety backup notice:', backupErr);
+      } catch (safetyErr) {
+        console.warn('Could not generate safety backup before import:', safetyErr);
       }
 
       await restoreAllData({
         patientEntries: importConfirm.patientEntries,
         settlements: importConfirm.settlements,
-        settings: importConfirm.settings,
       });
-      // Rebuild patient profiles from the imported entries
       await syncAllPatientProfiles();
       await logAudit({
         action: 'DATA_IMPORTED',
-        targetId: 'full_restore',
+        targetId: 'system',
         targetType: 'patient_entry',
-        details: `Imported ${importConfirm.patientEntries.length} visits and ${importConfirm.settlements.length} settlements from file (${importConfirm.source})${importConfirm.skippedRows > 0 ? ` — ${importConfirm.skippedRows} invalid rows skipped` : ''}. Previous device data was replaced.`,
+        details: `Imported ${importConfirm.patientEntries.length} visits and ${importConfirm.settlements.length} settlements from ${importConfirm.source}`,
       });
 
       showToast(
-        'Import Complete',
-        `Restored ${importConfirm.patientEntries.length} visits and ${importConfirm.settlements.length} settlements from ${importConfirm.source}`,
+        'Import Successful',
+        `Restored ${importConfirm.patientEntries.length} visits and ${importConfirm.settlements.length} settlements`,
         'success'
       );
       setImportConfirm(null);
       onDataImported?.();
+      onClose();
     } catch (err: any) {
-      showToast('Import Failed', err?.message || 'Could not import the selected file', 'error');
+      showToast('Import Failed', err?.message || 'Could not restore data', 'error');
     } finally {
       setIsImporting(false);
     }
   };
 
-  // Human-friendly timestamp for the backup status strip
-  const formatBackupTime = (ts: number): string =>
-    new Date(ts).toLocaleString(undefined, {
-      day: 'numeric',
-      month: 'short',
-      year: 'numeric',
-      hour: 'numeric',
-      minute: '2-digit',
-    });
-
-  // Persisted snapshot timestamp is the source of truth; engine value as fallback
-  const lastBackupTs = backup.lastBackupAt ?? settings.lastDriveSnapshotTimestamp ?? null;
   const isSyncing = backup.phase === 'syncing';
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/40 backdrop-blur-sm animate-in fade-in overflow-y-auto">
-      <div className="ios-glass bg-white/95 rounded-3xl p-6 w-full max-w-xl shadow-2xl space-y-6 my-auto">
+    <div className="fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-4 bg-slate-900/60 backdrop-blur-xs animate-in fade-in duration-200">
+      <div className="bg-white rounded-3xl max-w-lg w-full max-h-[92vh] overflow-y-auto p-5 sm:p-6 shadow-2xl space-y-6 border border-slate-100">
         {/* Header */}
         <div className="flex items-center justify-between pb-3 border-b border-slate-100">
-          <div className="flex items-center gap-2.5">
-            <div className="w-9 h-9 rounded-2xl bg-indigo-50 border border-indigo-100 text-indigo-600 flex items-center justify-center">
+          <div className="flex items-center gap-2">
+            <div className="p-2 rounded-xl bg-indigo-50 text-indigo-600">
               <Sparkles className="w-5 h-5" />
             </div>
             <div>
-              <h3 className="text-base font-bold text-slate-900">Clinic &amp; Backup Settings</h3>
-              <p className="text-xs text-slate-500">Account, Google Drive backup, branding &amp; profile</p>
+              <h3 className="text-base font-bold text-slate-900">Clinic Settings</h3>
+              <p className="text-xs text-slate-500">Cloud Data Vault &amp; Branding Profile</p>
             </div>
           </div>
           <button
             onClick={onClose}
-            className="p-1.5 rounded-full text-slate-400 hover:text-slate-700 hover:bg-slate-100 transition"
+            className="p-2 rounded-xl text-slate-400 hover:text-slate-600 hover:bg-slate-100 active:scale-95 transition"
+            aria-label="Close"
           >
             <X className="w-5 h-5" />
           </button>
         </div>
 
-        {/* Section 0: Account & Google Drive Cloud Backup */}
-        <div className="p-4 rounded-2xl bg-gradient-to-br from-sky-50/70 via-indigo-50/50 to-white border border-sky-100 space-y-3">
-          <div className="flex items-center justify-between">
+        {/* Section: Cloud Data Vault (Firestore central database) */}
+        <div className="p-4 rounded-2xl bg-indigo-50/60 border border-indigo-100/80 space-y-3.5">
+          <div className="flex items-center justify-between gap-2">
             <div className="flex items-center gap-2">
-              <CloudUpload className="w-4 h-4 text-sky-600" />
-              <h4 className="text-xs font-bold text-slate-900 uppercase tracking-wider">
-                Account &amp; Cloud Sync
-              </h4>
+              <ShieldCheck className="w-5 h-5 text-indigo-600" />
+              <div>
+                <h4 className="text-xs font-bold text-slate-900 uppercase tracking-wider">
+                  Cloud Data Vault (Firestore)
+                </h4>
+                <p className="text-[10px] text-slate-500">১১ ডিজিটের মোবাইল নম্বর ও ৪ ডিজিটের গোপন PIN</p>
+              </div>
             </div>
             <span
-              className={`px-2 py-0.5 rounded-full text-[10px] font-bold ${
-                backup.phase === 'syncing'
+              className={`px-2.5 py-0.5 rounded-full text-[10px] font-bold ${
+                isSyncing
                   ? 'bg-indigo-100 text-indigo-800'
+                  : backup.phase === 'error'
+                  ? 'bg-rose-100 text-rose-800'
                   : backup.user
-                  ? 'bg-emerald-100 text-emerald-800'
-                  : backup.isConfigured
-                  ? 'bg-slate-100 text-slate-600'
-                  : 'bg-amber-100 text-amber-800'
+                  ? backup.pendingChanges
+                    ? 'bg-sky-100 text-sky-800'
+                    : 'bg-emerald-100 text-emerald-800'
+                  : 'bg-slate-100 text-slate-600'
               }`}
             >
-              {!backup.isConfigured
-                ? 'Setup Needed'
-                : backup.phase === 'syncing'
-                ? 'Backing Up...'
+              {isSyncing
+                ? 'Syncing…'
                 : backup.phase === 'error'
-                ? 'Needs Attention'
+                ? 'Sync Error'
                 : backup.user
-                ? 'Protected'
-                : 'Backup Off'}
+                ? backup.pendingChanges
+                  ? 'Changes Pending'
+                  : 'Vault Connected'
+                : 'Not Logged In'}
             </span>
           </div>
 
-          {/* Cloud backup status strip: last successful backup + live progress */}
-          {backup.isConfigured && (
-            <div className="space-y-1.5">
-              <div className="flex items-center justify-between gap-2 p-2.5 rounded-xl bg-white/80 border border-white shadow-2xs">
-                <div className="flex items-center gap-2 min-w-0">
-                  {isSyncing ? (
-                    <Loader2 className="w-3.5 h-3.5 text-indigo-600 animate-spin shrink-0" />
-                  ) : backup.phase === 'error' ? (
-                    <AlertTriangle className="w-3.5 h-3.5 text-rose-600 shrink-0" />
-                  ) : (
-                    <CheckCircle2 className="w-3.5 h-3.5 text-emerald-600 shrink-0" />
-                  )}
-                  <div className="min-w-0">
-                    <p className="text-[11px] font-bold text-slate-900 flex items-center gap-1">
-                      <Clock className="w-3 h-3 text-slate-400" />
-                      Last successful backup
-                    </p>
-                    <p className="text-[10.5px] text-slate-500 truncate">
-                      {isSyncing
-                        ? 'Syncing records and saving a Drive backup…'
-                        : lastBackupTs
-                        ? formatBackupTime(lastBackupTs)
-                        : 'No cloud backup yet — tap "Backup to Drive Now" below'}
-                    </p>
-                  </div>
+          {!backup.user ? (
+            /* Login / Vault Registration Form */
+            <form onSubmit={handleVaultLogin} className="space-y-3 pt-1">
+              <p className="text-xs text-slate-600 leading-relaxed">
+                আপনার ১১ ডিজিটের মোবাইল নম্বর এবং ৪ ডিজিটের গোপন PIN দিয়ে লগইন করুন। প্রথমবার দিলে সেই নম্বরের জন্য স্বয়ংক্রিয়ভাবে একটি নিরাপদ <strong>Cloud Data Vault</strong> তৈরি হবে।
+              </p>
+
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
+                <div>
+                  <label className="text-[11px] font-bold text-slate-700 flex items-center gap-1 mb-1">
+                    <Smartphone className="w-3.5 h-3.5 text-indigo-600" />
+                    মোবাইল নম্বর (১১ ডিজিট)
+                  </label>
+                  <input
+                    type="tel"
+                    inputMode="numeric"
+                    maxLength={11}
+                    value={phoneInput}
+                    onChange={(e) => setPhoneInput(e.target.value.replace(/\D/g, ''))}
+                    placeholder="01XXXXXXXXX"
+                    className="w-full px-3 py-2 rounded-xl bg-white border border-slate-300 focus:border-indigo-500 text-xs font-semibold text-slate-900 outline-none"
+                    required
+                  />
                 </div>
-                <span
-                  className={`px-2 py-0.5 rounded-full text-[10px] font-bold shrink-0 ${
-                    isSyncing
-                      ? 'bg-indigo-100 text-indigo-800'
-                      : backup.phase === 'error'
-                      ? 'bg-rose-100 text-rose-800'
-                      : backup.pendingChanges
-                      ? 'bg-sky-100 text-sky-800'
-                      : 'bg-emerald-100 text-emerald-800'
-                  }`}
-                >
-                  {isSyncing
-                    ? 'Syncing…'
-                    : backup.phase === 'error'
-                    ? 'Backup Error'
-                    : backup.pendingChanges
-                    ? 'Changes Pending'
-                    : 'Up to Date'}
-                </span>
+
+                <div>
+                  <label className="text-[11px] font-bold text-slate-700 flex items-center gap-1 mb-1">
+                    <Lock className="w-3.5 h-3.5 text-indigo-600" />
+                    গোপন PIN (৪ ডিজিট)
+                  </label>
+                  <input
+                    type="password"
+                    inputMode="numeric"
+                    maxLength={4}
+                    value={pinInput}
+                    onChange={(e) => setPinInput(e.target.value.replace(/\D/g, ''))}
+                    placeholder="••••"
+                    className="w-full px-3 py-2 rounded-xl bg-white border border-slate-300 focus:border-indigo-500 text-xs font-semibold text-slate-900 outline-none tracking-widest"
+                    required
+                  />
+                </div>
               </div>
 
-              {/* Indeterminate progress bar while a backup is running */}
-              {isSyncing && (
-                <div className="h-1 w-full rounded-full bg-slate-100 overflow-hidden">
-                  <div className="h-full w-1/3 rounded-full bg-indigo-500 animate-pulse" />
-                </div>
-              )}
-
-              {backup.phase === 'error' && backup.error && (
-                <p className="text-[10.5px] text-rose-700 bg-rose-50 border border-rose-200 rounded-lg px-2.5 py-1.5">
+              {backup.error && (
+                <p className="text-[11px] text-rose-700 bg-rose-50 border border-rose-200 rounded-xl px-3 py-1.5">
                   {backup.error}
                 </p>
               )}
-            </div>
-          )}
 
-          {!backup.isConfigured ? (
-            <p className="text-xs text-slate-600 leading-relaxed">
-              Connect your Firebase project to enable Gmail sign-in and automatic Google Drive
-              backup. Paste your web app config into{' '}
-              <code className="text-[11px] font-mono bg-white px-1.5 py-0.5 rounded border border-slate-200 text-indigo-600">
-                src/config/firebase.ts
-              </code>{' '}
-              — instructions are inside that file.
-            </p>
-          ) : !backup.user ? (
-            <>
-              <p className="text-xs text-slate-600 leading-relaxed">
-                Sign in with your own Gmail account. Entries stay saved on this device
-                (IndexedDB), sync live to your account across devices, and are also backed up to
-                your personal Google Drive in a private <span className="font-semibold">Hisapp_Backups/</span>{' '}
-                folder.
-              </p>
               <button
-                type="button"
-                onClick={() => onBackupSignIn()}
-                className="w-full py-2.5 rounded-xl bg-white hover:bg-slate-50 border border-slate-300 text-slate-800 text-xs font-semibold shadow-2xs flex items-center justify-center gap-2 active:scale-95 transition"
+                type="submit"
+                disabled={isLoggingIn}
+                className="btn-gradient w-full py-2.5 rounded-xl text-white text-xs font-bold flex items-center justify-center gap-1.5 disabled:opacity-60 shadow-sm"
               >
-                <svg className="w-4 h-4" viewBox="0 0 48 48">
-                  <path fill="#EA4335" d="M24 9.5c3.54 0 6.71 1.22 9.21 3.6l6.85-6.85C35.9 2.38 30.47 0 24 0 14.62 0 6.51 5.38 2.56 13.22l7.98 6.19C12.43 13.72 17.74 9.5 24 9.5z"></path>
-                  <path fill="#4285F4" d="M46.98 24.55c0-1.57-.15-3.09-.38-4.55H24v9.02h12.94c-.58 2.96-2.26 5.48-4.78 7.18l7.73 6c4.51-4.18 7.09-10.36 7.09-17.65z"></path>
-                  <path fill="#FBBC05" d="M10.53 28.59c-.48-1.45-.76-2.99-.76-4.59s.27-3.14.76-4.59l-7.98-6.19C.92 16.46 0 20.12 0 24c0 3.88.92 7.54 2.56 10.78l7.97-6.19z"></path>
-                  <path fill="#34A853" d="M24 48c6.48 0 11.93-2.13 15.89-5.81l-7.73-6c-2.15 1.45-4.92 2.3-8.16 2.3-6.26 0-11.57-4.22-13.47-9.91l-7.98 6.19C6.51 42.62 14.62 48 24 48z"></path>
-                </svg>
-                <span>Sign in with Google (Gmail)</span>
-              </button>
-            </>
-          ) : (
-            <>
-              <div className="flex items-center gap-2.5 p-2.5 rounded-xl bg-white/80 border border-white shadow-2xs">
-                {backup.user.photoURL && (
-                  <img
-                    src={backup.user.photoURL}
-                    alt={backup.user.name}
-                    className="w-8 h-8 rounded-full border border-slate-200"
-                  />
+                {isLoggingIn ? (
+                  <>
+                    <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                    <span>ভল্ট খোলা হচ্ছে...</span>
+                  </>
+                ) : (
+                  <>
+                    <LogIn className="w-3.5 h-3.5" />
+                    <span>লগইন / নতুন ভল্ট তৈরি করুন</span>
+                  </>
                 )}
-                <div className="min-w-0 flex-1">
-                  <p className="text-xs font-bold text-slate-900 truncate">{backup.user.name}</p>
-                  <p className="text-[11px] text-slate-500 truncate">
-                    {backup.user.email}
-                    {settings.lastDriveSnapshotTimestamp
-                      ? ` · Last backup: ${new Date(settings.lastDriveSnapshotTimestamp).toLocaleString()}`
-                      : ' · No backup yet'}
-                  </p>
+              </button>
+            </form>
+          ) : (
+            /* Active Vault Info & Actions */
+            <div className="space-y-3 pt-1">
+              <div className="flex items-center justify-between gap-2 p-3 rounded-xl bg-white/90 border border-indigo-100 shadow-2xs">
+                <div className="flex items-center gap-2.5 min-w-0">
+                  <div className="w-8 h-8 rounded-full bg-emerald-100 text-emerald-700 flex items-center justify-center font-bold text-xs shrink-0">
+                    <ShieldCheck className="w-4 h-4" />
+                  </div>
+                  <div className="min-w-0">
+                    <p className="text-xs font-bold text-slate-900 truncate">
+                      ভল্ট আইডি: {backup.user.phoneNumber}
+                    </p>
+                    <p className="text-[10.5px] text-slate-500 truncate flex items-center gap-1">
+                      <Clock className="w-3 h-3" />
+                      {backup.lastBackupAt
+                        ? `সর্বশেষ সিঙ্ক: ${new Date(backup.lastBackupAt).toLocaleTimeString()}`
+                        : 'এখনো ক্লাউডে সিঙ্ক হয়নি'}
+                    </p>
+                  </div>
                 </div>
+
                 <button
                   type="button"
-                  onClick={() => onBackupSignOut()}
+                  onClick={() => onVaultSignOut()}
                   className="px-2.5 py-1.5 rounded-lg bg-slate-100 hover:bg-slate-200 text-slate-600 text-[10px] font-bold flex items-center gap-1 active:scale-95 transition shrink-0"
                 >
                   <LogOut className="w-3 h-3" />
@@ -467,11 +497,124 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
                 </button>
               </div>
 
+              {backup.error && (
+                <p className="text-[11px] text-rose-700 bg-rose-50 border border-rose-200 rounded-xl px-3 py-1.5">
+                  {backup.error}
+                </p>
+              )}
+
+              {/* Action Buttons */}
+              <div className="flex flex-wrap items-center gap-2 pt-0.5">
+                <button
+                  type="button"
+                  onClick={() => onBackupNow()}
+                  disabled={isSyncing}
+                  className="btn-gradient btn-gradient--sky px-3 py-2 rounded-xl text-white text-xs font-semibold flex items-center gap-1.5 disabled:opacity-60"
+                >
+                  <CloudUpload className={`w-3.5 h-3.5 ${isSyncing ? 'animate-pulse' : ''}`} />
+                  <span>{isSyncing ? 'Syncing...' : 'Sync Now'}</span>
+                </button>
+
+                <button
+                  type="button"
+                  onClick={() => setShowChangePin(!showChangePin)}
+                  className="px-3 py-2 rounded-xl bg-white hover:bg-slate-50 border border-slate-300 text-slate-700 text-xs font-semibold flex items-center gap-1.5 active:scale-95 transition"
+                >
+                  <KeyRound className="w-3.5 h-3.5 text-indigo-600" />
+                  <span>{showChangePin ? 'পিন পরিবর্তন বাতিল' : 'পিন পরিবর্তন (Change PIN)'}</span>
+                </button>
+
+                {backup.pendingChanges && (
+                  <span className="text-[10px] font-semibold text-sky-700 bg-sky-50 border border-sky-200 px-2.5 py-1 rounded-full">
+                    {backup.pendingCount} পরিবর্তন ক্লাউডে পাঠানোর অপেক্ষায়
+                  </span>
+                )}
+              </div>
+
+              {/* Change PIN Expandable Panel */}
+              {showChangePin && (
+                <form
+                  onSubmit={handleChangePin}
+                  className="p-3.5 rounded-xl bg-white border border-indigo-200 space-y-2.5 shadow-xs"
+                >
+                  <h5 className="text-xs font-bold text-slate-900 flex items-center gap-1.5">
+                    <KeyRound className="w-3.5 h-3.5 text-indigo-600" />
+                    গোপন PIN পরিবর্তন করুন
+                  </h5>
+
+                  <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
+                    <div>
+                      <label className="text-[10px] font-bold text-slate-600 block mb-0.5">
+                        বর্তমান PIN
+                      </label>
+                      <input
+                        type="password"
+                        inputMode="numeric"
+                        maxLength={4}
+                        value={oldPinInput}
+                        onChange={(e) => setOldPinInput(e.target.value.replace(/\D/g, ''))}
+                        placeholder="••••"
+                        className="w-full px-2.5 py-1.5 rounded-lg border border-slate-300 text-xs text-center font-bold outline-none focus:border-indigo-500"
+                        required
+                      />
+                    </div>
+                    <div>
+                      <label className="text-[10px] font-bold text-slate-600 block mb-0.5">
+                        নতুন PIN (৪ ডিজিট)
+                      </label>
+                      <input
+                        type="password"
+                        inputMode="numeric"
+                        maxLength={4}
+                        value={newPinInput}
+                        onChange={(e) => setNewPinInput(e.target.value.replace(/\D/g, ''))}
+                        placeholder="••••"
+                        className="w-full px-2.5 py-1.5 rounded-lg border border-slate-300 text-xs text-center font-bold outline-none focus:border-indigo-500"
+                        required
+                      />
+                    </div>
+                    <div>
+                      <label className="text-[10px] font-bold text-slate-600 block mb-0.5">
+                        নিশ্চিত নতুন PIN
+                      </label>
+                      <input
+                        type="password"
+                        inputMode="numeric"
+                        maxLength={4}
+                        value={confirmPinInput}
+                        onChange={(e) => setConfirmPinInput(e.target.value.replace(/\D/g, ''))}
+                        placeholder="••••"
+                        className="w-full px-2.5 py-1.5 rounded-lg border border-slate-300 text-xs text-center font-bold outline-none focus:border-indigo-500"
+                        required
+                      />
+                    </div>
+                  </div>
+
+                  <div className="flex justify-end gap-2 pt-1">
+                    <button
+                      type="button"
+                      onClick={() => setShowChangePin(false)}
+                      className="px-3 py-1.5 rounded-lg text-xs font-semibold text-slate-600 hover:bg-slate-100"
+                    >
+                      বাতিল
+                    </button>
+                    <button
+                      type="submit"
+                      disabled={isSavingPin}
+                      className="btn-gradient px-3 py-1.5 rounded-lg text-xs font-bold text-white disabled:opacity-60"
+                    >
+                      {isSavingPin ? 'সংরক্ষণ হচ্ছে...' : 'নতুন PIN সেভ করুন'}
+                    </button>
+                  </div>
+                </form>
+              )}
+
+              {/* Automatic Sync Switch */}
               <label className="flex items-center justify-between p-2.5 rounded-xl bg-white/80 border border-white shadow-2xs cursor-pointer">
                 <div>
-                  <p className="text-xs font-bold text-slate-900">Automatic Cloud Backup</p>
+                  <p className="text-xs font-bold text-slate-900">স্বয়ংক্রিয় ক্লাউড সিঙ্ক (Auto-Sync)</p>
                   <p className="text-[11px] text-slate-500">
-                    Live-sync records across signed-in devices and save Drive snapshots after changes.
+                    প্রতিটি পরিবর্তন স্বয়ংক্রিয়ভাবে ক্লাউড ভল্ট এবং সকল ডিভাইসে লাইভ সিঙ্ক হবে।
                   </p>
                 </div>
                 <button
@@ -491,63 +634,7 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
                   />
                 </button>
               </label>
-
-              <div className="flex flex-wrap items-center gap-2 pt-1">
-                {backup.driveNeedsReconnect && (
-                  <button
-                    type="button"
-                    onClick={() => void onBackupReconnectDrive()}
-                    className="px-3.5 py-2 rounded-xl bg-amber-50 hover:bg-amber-100 border border-amber-200 text-amber-800 text-xs font-semibold flex items-center gap-1.5 active:scale-95 transition"
-                  >
-                    <LogIn className="w-3.5 h-3.5" />
-                    <span>Reconnect Google Drive</span>
-                  </button>
-                )}
-                <button
-                  type="button"
-                  onClick={() => onBackupNow()}
-                  disabled={backup.phase === 'syncing'}
-                  className="btn-gradient btn-gradient--sky px-3.5 py-2 rounded-xl text-white text-xs font-semibold flex items-center gap-1.5 disabled:opacity-60"
-                >
-                  <CloudUpload className={`w-3.5 h-3.5 ${backup.phase === 'syncing' ? 'animate-pulse' : ''}`} />
-                  <span>{backup.phase === 'syncing' ? 'Syncing...' : 'Sync & Back Up Now'}</span>
-                </button>
-                {settings.ledgerSpreadsheetId && (
-                  <a
-                    href={`https://docs.google.com/spreadsheets/d/${settings.ledgerSpreadsheetId}/edit`}
-                    target="_blank"
-                    rel="noreferrer"
-                    className="px-3.5 py-2 rounded-xl bg-emerald-50 text-emerald-700 border border-emerald-200 text-xs font-semibold flex items-center gap-1.5 hover:bg-emerald-100 transition"
-                  >
-                    <FileSpreadsheet className="w-3.5 h-3.5" />
-                    <span>Open Ledger Sheet</span>
-                  </a>
-                )}
-                <button
-                  type="button"
-                  onClick={() => {
-                    if (
-                      window.confirm(
-                        'Restore your latest Google Drive backup? This replaces the data currently on this device with your cloud copy.'
-                      )
-                    ) {
-                      onRestoreFromDrive();
-                    }
-                  }}
-                  className="px-3.5 py-2 rounded-xl bg-white hover:bg-slate-50 border border-slate-300 text-slate-700 text-xs font-semibold flex items-center gap-1.5 active:scale-95 transition"
-                >
-                  <RotateCcw className="w-3.5 h-3.5" />
-                  <span>Restore from Drive</span>
-                </button>
-                {backup.pendingChanges && (
-                  <span className="text-[10px] font-semibold text-sky-700 bg-sky-50 border border-sky-200 px-2 py-1 rounded-full">
-                    {backup.pendingCount > 0
-                      ? `${backup.pendingCount} change${backup.pendingCount === 1 ? '' : 's'} syncing…`
-                      : 'Changes queued for Drive backup…'}
-                  </span>
-                )}
-              </div>
-            </>
+            </div>
           )}
         </div>
 
@@ -574,7 +661,6 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
             </div>
 
             <div className="flex items-center gap-3.5">
-              {/* Logo Preview */}
               <div className="w-14 h-14 rounded-2xl bg-white border border-slate-200 shadow-2xs flex items-center justify-center overflow-hidden p-1 shrink-0">
                 {clinicLogo ? (
                   <img
@@ -590,7 +676,6 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
                 )}
               </div>
 
-              {/* Upload Controls */}
               <div className="flex-1 space-y-1.5">
                 <div className="flex items-center gap-2 flex-wrap">
                   <label className="px-3 py-1.5 rounded-xl bg-indigo-50 hover:bg-indigo-100 text-indigo-700 border border-indigo-200 text-xs font-semibold cursor-pointer active:scale-95 transition inline-flex items-center gap-1.5">
@@ -644,12 +729,9 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
                 type="text"
                 value={doctorName}
                 onChange={(e) => setDoctorName(e.target.value)}
-                placeholder="Filled from your Google sign-in"
+                placeholder="Doctor name (e.g. Dr. MBR)"
                 className="w-full px-3 py-2 rounded-xl border border-slate-200 text-xs text-slate-800 outline-none focus:border-indigo-500 font-semibold"
               />
-              <p className="text-[10px] text-slate-400 mt-1 leading-relaxed">
-                Left empty until you sign in with your own Gmail — no account is pre-loaded.
-              </p>
             </div>
           </div>
 
@@ -692,7 +774,6 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
                   %
                 </span>
               </div>
-              {/* Quick rate presets */}
               <div className="flex items-center gap-1.5 mt-1.5">
                 {[30, 40, 50, 60].map((rate) => (
                   <button
@@ -810,7 +891,7 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
             </p>
           </div>
 
-          {/* Import Confirmation Panel (shown after a file is parsed) */}
+          {/* Import Confirmation Panel */}
           {importConfirm && (
             <div className="p-3.5 rounded-2xl bg-rose-50 border border-rose-200 space-y-2.5 animate-in fade-in">
               <div className="flex items-start gap-2">

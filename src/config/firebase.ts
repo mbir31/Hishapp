@@ -1,19 +1,19 @@
 /**
- * HISAPP — FIREBASE WEB APP CONFIGURATION (PROJECT: hishapp1)
+ * HISAPP — FIREBASE WEB APP & FIRESTORE CONFIGURATION (PROJECT: hishapp1)
  * ─────────────────────────────────────────────────────────────────
- * Live values for the Firebase project that hosts this app.
- * Security is enforced by Firebase Authentication + authorized domains;
- * a web config is a public client identifier, not a secret.
+ * Central Cloud Firestore database configuration for Hisapp.
+ * Hosted at: https://hishapp1.web.app/
+ * Developer / Project: hishapp1 (mbr.uhq@gmail.com)
  *
- * Requirements in the Firebase Console:
- *   • Authentication → Sign-in method → Google → Enabled
- *   • Authorized domains include hishapp1.web.app and localhost
- *   • Realtime Database is enabled; database.rules.json restricts each user's data to auth.uid
+ * Each clinic / doctor uses their 11-digit mobile number and 4-digit PIN
+ * to access their dedicated encrypted data vault in Cloud Firestore.
  */
+import { initializeApp, getApps, getApp, type FirebaseApp } from 'firebase/app';
+import { getFirestore, type Firestore } from 'firebase/firestore';
+
 export const firebaseConfig = {
   apiKey: 'AIzaSyC2VQdCuMe5DD5dkjH_l2AjvfV2O4xKK2M',
   authDomain: 'hishapp1.firebaseapp.com',
-  databaseURL: 'https://hishapp1-default-rtdb.asia-southeast1.firebasedatabase.app',
   projectId: 'hishapp1',
   storageBucket: 'hishapp1.firebasestorage.app',
   messagingSenderId: '707696094388',
@@ -21,24 +21,7 @@ export const firebaseConfig = {
   measurementId: 'G-D00YKC7CWJ',
 };
 
-/**
- * OPTIONAL — Google OAuth Web client ID used to renew the Google Drive
- * connection silently (no pop-up) when its one-hour access token expires.
- *
- * Where to find it: Firebase Console → Authentication → Sign-in method →
- * Google → "Web SDK configuration" → "Web client ID" (looks like
- * 1234567890-abc….apps.googleusercontent.com).
- *
- * Also add https://hishapp1.web.app (and http://localhost:3000 for local
- * development) to that client's "Authorized JavaScript origins" in Google
- * Cloud Console → APIs & Services → Credentials.
- *
- * Until this is set, Drive renewal still works but needs one tap on
- * "Reconnect Google Drive". Your records sync live regardless.
- */
-export const googleOAuthClientId = '';
-
-/** True once real Firebase credentials have been pasted above. */
+/** True once valid Firebase credentials are provided. */
 export function isFirebaseConfigured(): boolean {
   return (
     !!firebaseConfig.apiKey &&
@@ -47,4 +30,22 @@ export function isFirebaseConfigured(): boolean {
     !!firebaseConfig.projectId &&
     !firebaseConfig.projectId.startsWith('PASTE_')
   );
+}
+
+let appInstance: FirebaseApp | null = null;
+let firestoreInstance: Firestore | null = null;
+
+export function getFirebaseApp(): FirebaseApp {
+  if (!appInstance) {
+    appInstance = getApps().length > 0 ? getApp() : initializeApp(firebaseConfig);
+  }
+  return appInstance;
+}
+
+export function getFirestoreDb(): Firestore {
+  if (!firestoreInstance) {
+    const app = getFirebaseApp();
+    firestoreInstance = getFirestore(app);
+  }
+  return firestoreInstance;
 }

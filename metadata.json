@@ -1,5 +1,5 @@
 {
   "name": "Hisapp",
-  "description": "Dental Clinic Income & Settlement Tracker for dental surgeons with 40% clinical share tracking, carry-forward settlements, and Gmail sign-in via Firebase, simultaneous IndexedDB + Google Drive cloud backup, and offline-first local storage.",
+  "description": "Dental Clinic Income & Settlement Tracker for dental surgeons with 40% clinical share tracking, carry-forward settlements, central Cloud Firestore data vault with 11-digit mobile number and 4-digit PIN authentication, and offline-first IndexedDB storage.",
   "requestFramePermissions": []
 }

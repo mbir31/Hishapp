@@ -29,13 +29,12 @@ const TAB_ORDER: TabType[] = ['dashboard', 'entry', 'records', 'settlement'];
 
 const INITIAL_BACKUP_STATUS: BackupStatus = {
   phase: 'signed-out',
-  isConfigured: false,
+  isConfigured: true,
   isOnline: true,
   user: null,
   lastBackupAt: null,
   pendingChanges: false,
   pendingCount: 0,
-  driveNeedsReconnect: false,
   error: null,
 };
 
@@ -103,15 +102,16 @@ export default function App() {
         const removedDemoData = await removeLegacyDemoData();
         await refreshData();
 
-        // Start the dual-backup engine: Firebase auth + Google Drive sync
-        engineUnsubscribeRef.current = await backupEngine.start({
-          onRestored: () => {
-            void refreshData();
-          },
-          onToast: showToast,
+        // Start the Cloud Vault sync engine
+        engineUnsubscribeRef.current = backupEngine.start(() => {
+          void refreshData();
         });
-        backupEngine.subscribe(setBackupStatus);
+        const unsubBackup = backupEngine.subscribe(setBackupStatus);
         if (removedDemoData) backupEngine.onDataChanged();
+
+        return () => {
+          unsubBackup();
+        };
       } catch (err) {
         console.error('Initialization error:', err);
       } finally {
@@ -130,7 +130,7 @@ export default function App() {
     if (!isOnline && backupStatus.pendingChanges) {
       showToast(
         'Working Offline',
-        'Changes are saved locally and will sync across your devices and back up to Google Drive when you reconnect.',
+        'Changes are saved locally and will sync to your Cloud Vault when you reconnect.',
         'info'
       );
     }
@@ -270,7 +270,18 @@ export default function App() {
         isOnline={isOnline}
         backup={backupStatus}
         onOpenSettings={() => setIsSettingsOpen(true)}
-        onSyncNow={() => void backupEngine.backupNow()}
+        onSyncNow={async () => {
+          if (!backupStatus.user) {
+            setIsSettingsOpen(true);
+          } else {
+            try {
+              await backupEngine.backupNow();
+              showToast('ক্লাউড সিঙ্ক সম্পন্ন', 'সব রেকর্ড ক্লাউড ভল্টে আপডেট হয়েছে', 'success');
+            } catch (err: any) {
+              showToast('সিঙ্ক সমস্যা', err?.message, 'error');
+            }
+          }
+        }}
       />
 
       {/* Firebase setup banner — shown until the web config is pasted */}
@@ -347,11 +358,10 @@ export default function App() {
           settings={settings}
           backup={backupStatus}
           onSaveSettings={handleSettingsSaved}
-          onBackupSignIn={() => backupEngine.signIn()}
-          onBackupReconnectDrive={() => backupEngine.reconnectDrive()}
-          onBackupSignOut={() => backupEngine.signOut()}
+          onVaultLogin={(phone, pin) => backupEngine.login(phone, pin)}
+          onVaultSignOut={() => backupEngine.signOut()}
+          onVaultChangePin={(oldPin, newPin) => backupEngine.changePin(oldPin, newPin)}
           onBackupNow={() => backupEngine.backupNow()}
-          onRestoreFromDrive={() => backupEngine.restoreLatest()}
           onToggleAutoBackup={async (enabled) => {
             const updated = await saveSettings({ autoBackup: enabled });
             handleSettingsSaved(updated);
