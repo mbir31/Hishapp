@@ -16,9 +16,12 @@ import {
   Download,
   Printer,
   Sparkles,
+  ImageDown,
+  Loader2,
 } from 'lucide-react';
 import { ClinicSettings, PatientEntry, Settlement } from '../types';
 import { deleteSettlement, executeSettlement } from '../db/indexedDB';
+import { exportSettlementAsImage } from '../utils/settlementImageExport';
 import { MonthlySummaryModal } from './MonthlySummaryModal';
 
 interface SettlementTabProps {
@@ -55,6 +58,8 @@ export const SettlementTab: React.FC<SettlementTabProps> = ({
   const [isSubmitting, setIsSubmitting] = useState<boolean>(false);
   const [showHistory, setShowHistory] = useState<boolean>(false);
   const [isMonthlyModalOpen, setIsMonthlyModalOpen] = useState<boolean>(false);
+  // Settlement id currently being rendered into a JPG (spinner on that row)
+  const [exportingImageId, setExportingImageId] = useState<string | null>(null);
 
   const shareRate = settings.sharePercentage || 40;
 
@@ -169,6 +174,31 @@ export const SettlementTab: React.FC<SettlementTabProps> = ({
       showToast('Settlement Failed', err?.message || 'Database transaction error', 'error');
     } finally {
       setIsSubmitting(false);
+    }
+  };
+
+  /** Renders one settlement as a formal JPG statement and saves / shares it. */
+  const handleExportSettlementImage = async (settlement: Settlement) => {
+    try {
+      setExportingImageId(settlement.settlementId);
+      const result = await exportSettlementAsImage(settlement, settings);
+      if (result.outcome === 'cancelled') return; // share sheet dismissed on purpose
+      showToast(
+        result.outcome === 'shared' ? 'Settlement Image Shared' : 'Settlement Image Saved',
+        result.outcome === 'shared'
+          ? `${result.fileName} is ready in the share sheet.`
+          : `${result.fileName} downloaded to this device.`,
+        'success'
+      );
+    } catch (err: any) {
+      console.error('Settlement image export error:', err);
+      showToast(
+        'Image Export Failed',
+        err?.message || 'Could not create the settlement image',
+        'error'
+      );
+    } finally {
+      setExportingImageId(null);
     }
   };
 
@@ -502,13 +532,29 @@ export const SettlementTab: React.FC<SettlementTabProps> = ({
                       </span>
                     </div>
 
-                    <button
-                      onClick={() => handleDeleteSettlement(s.settlementId)}
-                      className="p-1 rounded-lg text-slate-400 hover:text-rose-600 hover:bg-rose-50 transition"
-                      title="Revert settlement"
-                    >
-                      <Trash2 className="w-3.5 h-3.5" />
-                    </button>
+                    <div className="flex items-center gap-0.5">
+                      <button
+                        onClick={() => void handleExportSettlementImage(s)}
+                        disabled={exportingImageId === s.settlementId}
+                        className="p-1 rounded-lg text-slate-400 hover:text-indigo-600 hover:bg-indigo-50 transition disabled:opacity-60"
+                        title="Export this settlement as a JPG image"
+                        aria-label={`Export settlement ${s.settlementId} as JPG image`}
+                      >
+                        {exportingImageId === s.settlementId ? (
+                          <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                        ) : (
+                          <ImageDown className="w-3.5 h-3.5" />
+                        )}
+                      </button>
+
+                      <button
+                        onClick={() => handleDeleteSettlement(s.settlementId)}
+                        className="p-1 rounded-lg text-slate-400 hover:text-rose-600 hover:bg-rose-50 transition"
+                        title="Revert settlement"
+                      >
+                        <Trash2 className="w-3.5 h-3.5" />
+                      </button>
+                    </div>
                   </div>
 
                   <div className="grid grid-cols-3 gap-2 text-[11px] pt-1">

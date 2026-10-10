@@ -11,7 +11,9 @@ import {
   Gift,
   Clock,
   Sparkles,
+  ChevronLeft,
   ChevronRight,
+  RefreshCw,
   Edit3,
   Save,
   X,
@@ -28,6 +30,12 @@ import {
   saveSettings,
   getAllPatientProfiles,
 } from '../db/indexedDB';
+import { describeDateKey, nextDateKey, previousDateKey, todayDateKey } from '../utils/dateUtils';
+import {
+  FOLLOW_UP_PROCEDURE,
+  isFollowUpAmountPreset,
+  isFollowUpProcedure,
+} from '../utils/followUp';
 import { ProcedureManagerModal } from './ProcedureManagerModal';
 import { AmountPresetManagerModal } from './AmountPresetManagerModal';
 
@@ -49,7 +57,8 @@ export const EntryTab: React.FC<EntryTabProps> = ({
   showToast,
 }) => {
   const currency = settings.currencySymbol || '৳';
-  const todayStr = new Date().toISOString().split('T')[0];
+  // Local calendar day — `toISOString()` would shift the day back for UTC+6.
+  const todayStr = todayDateKey();
 
   // Procedure list from settings or defaults
   const procedureList =
@@ -188,8 +197,7 @@ export const EntryTab: React.FC<EntryTabProps> = ({
     if (prof.procedures && prof.procedures.length > 0) {
       const lastProc = prof.procedures[prof.procedures.length - 1];
       if (procedureList.includes(lastProc)) {
-        setProcedure(lastProc);
-        setIsCustomProcedure(false);
+        handleSelectProcedureChip(lastProc);
       }
     }
 
@@ -214,16 +222,72 @@ export const EntryTab: React.FC<EntryTabProps> = ({
   const handleSelectProcedureChip = (proc: string) => {
     setIsCustomProcedure(false);
     setProcedure(proc);
+
+    // A follow-up visit is already paid for in the first visit, so the preset
+    // starts the Received Amount at ৳0 — the doctor can still retype it.
+    if (isFollowUpProcedure(proc)) {
+      setReceivedAmount('0');
+      if (!remarks.trim()) setRemarks(FOLLOW_UP_PROCEDURE);
+      showToast(
+        `${FOLLOW_UP_PROCEDURE} Selected`,
+        `Received amount set to ${currency} 0. Change it if this visit was paid.`,
+        'info'
+      );
+    }
   };
 
   const handleSetQuickDate = (daysAgo: number) => {
     const d = new Date();
     d.setDate(d.getDate() - daysAgo);
-    setDate(d.toISOString().split('T')[0]);
+    setDate(todayDateKey(d));
   };
 
-  // Preset click handler: handles 0 amount (No Payment / Free Campaign) or positive numbers
+  /** Arrow buttons beside the date field: one day back (◀) or forward (▶). */
+  const handleStepDate = (direction: -1 | 1) => {
+    setDate((current) => {
+      const stepped = direction < 0 ? previousDateKey(current) : nextDateKey(current);
+      return stepped ?? current;
+    });
+  };
+
+  /**
+   * Makes "Follow-up" the active procedure. When a doctor removed it from
+   * their own list it is added back once, so the dropdown and the chips can
+   * actually show what the preset selected.
+   */
+  const applyFollowUpProcedure = async () => {
+    setIsCustomProcedure(false);
+    setCustomProcedure('');
+    setProcedure(FOLLOW_UP_PROCEDURE);
+
+    if (!procedureList.some((proc) => isFollowUpProcedure(proc))) {
+      try {
+        const updated = await saveSettings({
+          procedures: [...procedureList, FOLLOW_UP_PROCEDURE],
+        });
+        onUpdateSettings?.(updated);
+      } catch (err) {
+        console.warn('Could not store the Follow-up procedure preset:', err);
+      }
+    }
+  };
+
+  // Preset click handler: Follow-up (procedure + ৳0), zero-fee presets, or amounts
   const handleSelectAmountPreset = (preset: AmountPreset) => {
+    if (isFollowUpAmountPreset(preset)) {
+      void applyFollowUpProcedure();
+      setReceivedAmount('0');
+      if (!remarks.trim()) {
+        setRemarks(preset.label);
+      }
+      showToast(
+        `${preset.label} Selected`,
+        `Procedure set to ${FOLLOW_UP_PROCEDURE} and amount to ${currency} 0 — both editable.`,
+        'info'
+      );
+      return;
+    }
+
     if (preset.amount === 0) {
       setReceivedAmount('0');
       if (!remarks.trim()) {
@@ -234,13 +298,14 @@ export const EntryTab: React.FC<EntryTabProps> = ({
         `Fee recorded as ${currency} 0 (Doctor share: ${currency} 0)`,
         'info'
       );
+      return;
+    }
+
+    const curr = parseFloat(receivedAmount) || 0;
+    if (curr === 0) {
+      setReceivedAmount(String(preset.amount));
     } else {
-      const curr = parseFloat(receivedAmount) || 0;
-      if (curr === 0) {
-        setReceivedAmount(String(preset.amount));
-      } else {
-        setReceivedAmount(String(curr + preset.amount));
-      }
+      setReceivedAmount(String(curr + preset.amount));
     }
   };
 
@@ -411,13 +476,42 @@ export const EntryTab: React.FC<EntryTabProps> = ({
                 </button>
               </div>
             </div>
-            <input
-              type="date"
-              value={date}
-              onChange={(e) => setDate(e.target.value)}
-              className="w-full px-3 py-1.5 rounded-xl bg-white/70 border border-white/70 focus:border-indigo-500 text-slate-800 text-xs font-medium transition outline-none"
-              required
-            />
+            {/* Day stepper: tap ◀ / ▶ to move one day back or forward */}
+            <div className="flex items-stretch gap-1">
+              <button
+                type="button"
+                onClick={() => handleStepDate(-1)}
+                aria-label="Previous day"
+                title="Previous day"
+                className="w-8 shrink-0 rounded-xl bg-white/70 border border-white/70 text-indigo-600 flex items-center justify-center hover:bg-white active:scale-90 transition"
+              >
+                <ChevronLeft className="w-4 h-4" />
+              </button>
+
+              <input
+                type="date"
+                value={date}
+                onChange={(e) => setDate(e.target.value)}
+                aria-label={`Visit date — ${describeDateKey(date)}`}
+                className="min-w-0 flex-1 px-2 py-1.5 rounded-xl bg-white/70 border border-white/70 focus:border-indigo-500 text-slate-800 text-xs font-medium transition outline-none text-center"
+                required
+              />
+
+              <button
+                type="button"
+                onClick={() => handleStepDate(1)}
+                aria-label="Next day"
+                title="Next day"
+                className="w-8 shrink-0 rounded-xl bg-white/70 border border-white/70 text-indigo-600 flex items-center justify-center hover:bg-white active:scale-90 transition"
+              >
+                <ChevronRight className="w-4 h-4" />
+              </button>
+            </div>
+
+            <p className="text-[9.5px] font-semibold text-slate-400 leading-none pl-0.5">
+              {describeDateKey(date)}
+              {date === todayStr && <span className="text-emerald-600"> • Today</span>}
+            </p>
           </div>
 
           {/* Patient Name / ID */}
@@ -568,8 +662,8 @@ export const EntryTab: React.FC<EntryTabProps> = ({
           ) : (
             <div className="space-y-1.5">
               <select
-                value={procedure}
-                onChange={(e) => setProcedure(e.target.value)}
+                value={procedureList.includes(procedure) ? procedure : procedureList[0] || ''}
+                onChange={(e) => handleSelectProcedureChip(e.target.value)}
                 className="w-full px-3 py-1.5 rounded-xl bg-white/70 border border-white/70 focus:border-indigo-500 text-slate-800 text-xs font-medium transition outline-none"
               >
                 {procedureList.map((p) => (
@@ -642,7 +736,31 @@ export const EntryTab: React.FC<EntryTabProps> = ({
           <div className="flex flex-wrap items-center gap-1 pt-0.5">
             {amountPresetList.map((preset) => {
               const isZero = preset.amount === 0;
-              const isSelected = isZero && receivedAmount === '0';
+              const isFollowUp = isFollowUpAmountPreset(preset);
+              const isSelected = isZero && !isFollowUp && receivedAmount === '0';
+
+              // Follow-up preset: switches the procedure AND starts at ৳0
+              if (isFollowUp) {
+                const isFollowUpActive =
+                  receivedAmount === '0' && isFollowUpProcedure(procedure);
+
+                return (
+                  <button
+                    key={preset.id}
+                    type="button"
+                    onClick={() => handleSelectAmountPreset(preset)}
+                    title={`Set procedure to ${FOLLOW_UP_PROCEDURE} and amount to ${currency} 0`}
+                    className={`px-2 py-0.5 rounded-lg text-[10.5px] font-bold flex items-center gap-1 border active:scale-95 transition ${
+                      isFollowUpActive
+                        ? 'btn-gradient border-transparent text-white'
+                        : 'bg-sky-50 text-sky-700 border-sky-200 hover:bg-sky-100'
+                    }`}
+                  >
+                    <RefreshCw className="w-2.5 h-2.5" />
+                    <span>{preset.label} ({currency}0)</span>
+                  </button>
+                );
+              }
 
               if (isZero) {
                 return (
@@ -732,7 +850,7 @@ export const EntryTab: React.FC<EntryTabProps> = ({
           className="btn-gradient w-full py-2.5 px-4 rounded-xl text-white font-bold text-sm flex items-center justify-center gap-1.5 disabled:opacity-60 disabled:cursor-not-allowed"
         >
           <CheckCircle2 className="w-4 h-4" />
-          <span>{isSubmitting ? 'Saving to Ledger...' : `Save Record (${shareRate}% Share)`}</span>
+          <span>{isSubmitting ? 'Saving to Ledger...' : 'Save Record'}</span>
         </button>
 
         {/* Row 6: DOCTOR'S SHARE CALCULATION BADGE (COMPACT, BELOW SAVE BUTTON) */}

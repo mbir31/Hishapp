@@ -1,10 +1,16 @@
 import { AmountPreset, AuditLogEntry, ClinicSettings, PatientEntry, PatientProfile, Settlement } from '../types';
+import {
+  FOLLOW_UP_AMOUNT_PRESET,
+  FOLLOW_UP_PROCEDURE,
+  withFollowUpAmountPreset,
+  withFollowUpProcedure,
+} from '../utils/followUp';
 import { isLegacyDemoEntry, isLegacyDemoProfile, isLegacyDemoSettlement } from './legacyDemoData';
 
 const DB_NAME = 'DentalIncomeTrackerDB';
 const DB_VERSION = 3;
 
-export const DEFAULT_PROCEDURES: string[] = [
+export const DEFAULT_PROCEDURES: string[] = withFollowUpProcedure([
   'Visit',
   'RCT',
   'Filling',
@@ -12,9 +18,9 @@ export const DEFAULT_PROCEDURES: string[] = [
   'Extraction',
   'Pulpectomy',
   'Crown',
-];
+]);
 
-export const DEFAULT_AMOUNT_PRESETS: AmountPreset[] = [
+export const DEFAULT_AMOUNT_PRESETS: AmountPreset[] = withFollowUpAmountPreset([
   { id: 'no-pay', label: 'No Payment', amount: 0 },
   { id: 'free-camp', label: 'Free Campaign', amount: 0 },
   { id: 'amt-500', label: '500', amount: 500 },
@@ -22,7 +28,9 @@ export const DEFAULT_AMOUNT_PRESETS: AmountPreset[] = [
   { id: 'amt-2000', label: '2000', amount: 2000 },
   { id: 'amt-3000', label: '3000', amount: 3000 },
   { id: 'amt-5000', label: '5000', amount: 5000 },
-];
+]);
+
+export { FOLLOW_UP_PROCEDURE, FOLLOW_UP_AMOUNT_PRESET };
 
 /** Pre-loaded clinic branding only — no account / doctor identity is preset. */
 export const DEFAULT_CLINIC_NAME = 'Yashfin Dental Care';
@@ -59,6 +67,7 @@ export const DEFAULT_SETTINGS: ClinicSettings = {
   procedures: DEFAULT_PROCEDURES,
   amountPresets: DEFAULT_AMOUNT_PRESETS,
   legacyIdentityChecked: true,
+  followUpPresetsChecked: true,
 };
 
 // Open or upgrade IndexedDB
@@ -584,14 +593,33 @@ export async function getSettings(): Promise<ClinicSettings> {
         const doctorPhoto = isPresetDoctorName ? '' : stored.doctorPhoto || '';
         const ownerUid = isPresetDoctorName ? null : stored.ownerUid || null;
 
-        const procedures =
-          stored.procedures && Array.isArray(stored.procedures) && stored.procedures.length > 0
+        // ── One-time "Follow-up" preset back-fill ──────────────────────
+        // Records saved by builds before the follow-up feature lack the flag.
+        // Their customized lists get "Follow-up" added once and the flag is
+        // persisted, so a doctor who later removes the preset from Settings
+        // keeps it removed. Records without a stored list keep using today's
+        // defaults (which already contain the preset), so nothing is frozen.
+        const needsFollowUpCheck = stored.followUpPresetsChecked !== true;
+        const storedProcedures =
+          Array.isArray(stored.procedures) && stored.procedures.length > 0
             ? stored.procedures
-            : DEFAULT_PROCEDURES;
-        const amountPresets =
-          stored.amountPresets && Array.isArray(stored.amountPresets) && stored.amountPresets.length > 0
+            : null;
+        const storedAmountPresets =
+          Array.isArray(stored.amountPresets) && stored.amountPresets.length > 0
             ? stored.amountPresets
-            : DEFAULT_AMOUNT_PRESETS;
+            : null;
+
+        const procedures = storedProcedures
+          ? needsFollowUpCheck
+            ? withFollowUpProcedure(storedProcedures)
+            : storedProcedures
+          : DEFAULT_PROCEDURES;
+        const amountPresets = storedAmountPresets
+          ? needsFollowUpCheck
+            ? withFollowUpAmountPreset(storedAmountPresets)
+            : storedAmountPresets
+          : DEFAULT_AMOUNT_PRESETS;
+
         resolve({
           settings: {
             ...DEFAULT_SETTINGS,
@@ -605,19 +633,24 @@ export async function getSettings(): Promise<ClinicSettings> {
             procedures,
             amountPresets,
             legacyIdentityChecked: true,
+            followUpPresetsChecked: true,
           },
-          // Only the identity fields and the flag change in storage. Everything
-          // else stays as saved, so today's defaults are not frozen into the record.
-          migratedRecord: needsMigration
-            ? {
-                ...stored,
-                doctorName,
-                doctorEmail,
-                doctorPhoto,
-                ownerUid,
-                legacyIdentityChecked: true,
-              }
-            : null,
+          // Only the checked fields change in storage. Everything else stays as
+          // saved, so today's defaults are not frozen into the record.
+          migratedRecord:
+            needsMigration || needsFollowUpCheck
+              ? {
+                  ...stored,
+                  doctorName,
+                  doctorEmail,
+                  doctorPhoto,
+                  ownerUid,
+                  ...(storedProcedures ? { procedures } : {}),
+                  ...(storedAmountPresets ? { amountPresets } : {}),
+                  legacyIdentityChecked: true,
+                  followUpPresetsChecked: true,
+                }
+              : null,
         });
       } else {
         resolve({ settings: DEFAULT_SETTINGS, migratedRecord: null });
@@ -647,8 +680,14 @@ async function writeSettingsRecord(settings: ClinicSettings): Promise<void> {
 
 export async function saveSettings(settings: Partial<ClinicSettings>): Promise<ClinicSettings> {
   const current = await getSettings();
-  // Anything saved by this build has already passed the placeholder check.
-  const updated = { ...current, ...settings, legacyIdentityChecked: true };
+  // Anything saved by this build has already passed the placeholder and
+  // follow-up preset checks, so both flags are stamped on the record.
+  const updated = {
+    ...current,
+    ...settings,
+    legacyIdentityChecked: true,
+    followUpPresetsChecked: true,
+  };
   const { store, tx } = await getStore('settings', 'readwrite');
   return new Promise((resolve, reject) => {
     store.put({ key: 'app_settings', value: updated });
@@ -954,6 +993,9 @@ export async function restoreAllData(payload: {
     // The placeholder check belongs to the backup's own history. An older backup
     // must still be checked after restore, so the flag is not inherited from here.
     legacyIdentityChecked: backupSettings.legacyIdentityChecked === true,
+    // The follow-up preset back-fill works the same way: a backup written before
+    // the feature still gets "Follow-up" added once after it is restored.
+    followUpPresetsChecked: backupSettings.followUpPresetsChecked === true,
     lastDriveSnapshotTimestamp: current.lastDriveSnapshotTimestamp ?? null,
     driveFolderId: current.driveFolderId ?? null,
     ledgerSpreadsheetId: current.ledgerSpreadsheetId ?? null,
